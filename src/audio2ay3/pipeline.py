@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .analysis import load_audio, separate, transcribe
+from .analysis import detect_percussion, load_audio, separate_stems, transcribe
 from .analysis.model import Transcription
 from .config import RunConfig
 from .encode import RegisterStreamBuilder, quantize_tone, velocity_to_amplitude
@@ -40,9 +40,12 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             if voice is None:
                 continue
             tone_period = quantize_tone(voice.pitch_hz, clock)
-            amplitude = velocity_to_amplitude(voice.velocity)
-            if tone_period > 0 and amplitude > 0:
-                builder.set_tone(f, ch, tone_period, amplitude)
+            if tone_period <= 0:
+                continue
+            # The allocator already decided this voice should sound; never let velocity
+            # rounding silence it — floor a placed note to the quietest audible amplitude.
+            amplitude = max(1, velocity_to_amplitude(voice.velocity))
+            builder.set_tone(f, ch, tone_period, amplitude)
 
     apply_percussion(builder, tr.percussion, frame_rate, n_frames)
 
@@ -60,8 +63,10 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
 def convert(path: str, cfg: RunConfig) -> YmSong:
     """Full neural conversion: audio file -> arranged :class:`YmSong`."""
     audio, sr = load_audio(path, cfg.render_sr)
-    instrumental = separate(audio, sr, cfg.separation)
-    tr = transcribe(instrumental, sr, cfg.transcription, cfg.chip.frame_rate_hz)
+    stems = separate_stems(audio, sr, cfg.separation)
+    tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
+    if stems.drums is not None:
+        tr.percussion = detect_percussion(stems.drums, stems.sr)
     return arrange(tr, cfg, name=Path(path).stem)
 
 
