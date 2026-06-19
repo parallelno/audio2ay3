@@ -33,6 +33,13 @@ _CLASSIFY_WIN_S = 0.03
 # Floor so a detected-but-soft hit still triggers an audible noise burst.
 _MIN_VELOCITY = 0.3
 
+# A drum stem must carry at least this share of the whole track's RMS to count as "present".
+# Source separation never returns a perfectly silent stem: a drum-less track (e.g. a sustained
+# drone) still yields low-level residual bleed, and because velocities are normalised against the
+# stem's *own* dynamics, that bleed would otherwise fire a steady stream of phantom hits. Gating
+# on absolute energy relative to the mix suppresses those without touching real, loud drums.
+_DRUM_PRESENCE_RATIO = 0.05
+
 
 def _classify(centroid_hz: float, low_ratio: float) -> PercussionKind:
     if low_ratio >= _KICK_LOW_RATIO:
@@ -42,11 +49,26 @@ def _classify(centroid_hz: float, low_ratio: float) -> PercussionKind:
     return "hat"
 
 
-def detect_percussion(drums: np.ndarray, sr: int) -> list[Percussion]:
+def detect_percussion(
+    drums: np.ndarray, sr: int, reference_rms: float | None = None
+) -> list[Percussion]:
     """Return drum hits found in the mono *drums* stem, classified kick / snare / hat.
 
-    Returns an empty list for empty/silent input or when no onsets are found.
+    *reference_rms*, when given, is the RMS of the whole track: a drum stem quieter than
+    :data:`_DRUM_PRESENCE_RATIO` of it is treated as drum-less and yields no hits.
+
+    Returns an empty list for empty/silent input, a drum-less stem, or when no onsets are found.
     """
+    y = np.ascontiguousarray(drums, dtype=np.float32)
+    if y.size == 0 or not np.any(y):
+        return []
+
+    # Presence gate (cheap, runs before the librosa import): skip a near-silent drum stem.
+    if reference_rms is not None and reference_rms > 0.0:
+        drum_rms = float(np.sqrt(np.mean(np.square(y))))
+        if drum_rms < _DRUM_PRESENCE_RATIO * reference_rms:
+            return []
+
     try:
         import librosa
     except ImportError as exc:  # pragma: no cover - depends on optional extra
@@ -54,10 +76,6 @@ def detect_percussion(drums: np.ndarray, sr: int) -> list[Percussion]:
             "Percussion detection needs the 'neural' extra (librosa): "
             "pip install audio2ay3[neural]"
         ) from exc
-
-    y = np.ascontiguousarray(drums, dtype=np.float32)
-    if y.size == 0 or not np.any(y):
-        return []
 
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=_HOP)
     onset_frames = librosa.onset.onset_detect(

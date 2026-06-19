@@ -32,6 +32,14 @@ def test_detect_percussion_empty_or_silent_returns_no_hits():
     assert detect_percussion(np.zeros(4096, dtype=np.float32), 22050) == []
 
 
+def test_detect_percussion_gates_out_a_near_silent_drum_stem():
+    # No librosa needed: the presence gate runs before the heavy import. A drum stem whose
+    # energy is a tiny fraction of the track RMS (separation residual, not real drums) yields
+    # no hits, so percussion-free material can't fire phantom noise bursts.
+    residual = np.full(4096, 1e-4, dtype=np.float32)  # rms 1e-4 vs a 0.2 track rms
+    assert detect_percussion(residual, 22050, reference_rms=0.2) == []
+
+
 @pytest.mark.skipif(not DRUM_LOOP.exists(), reason="drum-loop sample not present")
 def test_detect_percussion_finds_varied_ordered_hits_on_drum_loop():
     librosa = pytest.importorskip("librosa")

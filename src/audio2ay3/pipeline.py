@@ -10,6 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
+
 from .analysis import detect_percussion, load_audio, separate_stems, transcribe
 from .analysis.model import Transcription
 from .config import RunConfig
@@ -74,7 +76,10 @@ def convert(path: str, cfg: RunConfig) -> YmSong:
     stems = separate_stems(audio, sr, cfg.separation)
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     if stems.drums is not None:
-        tr.percussion = detect_percussion(stems.drums, stems.sr)
+        # Reference the whole-track RMS so a drum-less stem's residual bleed can't fire phantom
+        # hits (its velocities are otherwise normalised against its own near-silent dynamics).
+        ref_rms = float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
+        tr.percussion = detect_percussion(stems.drums, stems.sr, reference_rms=ref_rms)
     if stems.bass is not None:
         # Transcribe the isolated bass stem on its own; place_bass monophonises it later.
         bass_tr = transcribe(stems.bass, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
