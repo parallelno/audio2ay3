@@ -4,14 +4,17 @@ Per the project's neural-only analysis decision, separation is a neural step (De
 default). The model is imported lazily so the package — and the whole emulator/``validate``
 path — stays usable without the heavy ``[neural]`` extra installed.
 
-Two products come out of one Demucs pass:
+Three products come out of one Demucs pass:
 
-* **instrumental** — the pitched content (every stem except *vocals* and *drums*), fed to the
-  note transcriber. Excluding drums here keeps drum transients from being mis-heard as pitches.
+* **instrumental** — the pitched harmony/lead content (every stem except *vocals*, *drums*,
+  and *bass*), fed to the note transcriber. Excluding drums keeps transients from being
+  mis-heard as pitches; excluding bass frees it for its own dedicated channel.
+* **bass** — the isolated bass stem, transcribed on its own and given a dedicated AY tone
+  channel so the low end never competes with the lead. ``None`` when unavailable.
 * **drums** — the isolated drum stem, fed to :mod:`.percussion_detect` so hits can be placed on
   the AY noise channel. ``None`` when no real separation happened.
 
-``mode="none"`` is a passthrough for already-instrumental input (no drum stem, so no percussion).
+``mode="none"`` is a passthrough for already-instrumental input (no bass/drum stems).
 """
 
 from __future__ import annotations
@@ -25,20 +28,22 @@ import numpy as np
 class SeparationResult:
     """Stems handed to the transcription stage."""
 
-    instrumental: np.ndarray  # mono pitched content (no vocals, no drums)
+    instrumental: np.ndarray  # mono pitched content (no vocals, drums, or bass)
     drums: np.ndarray | None  # mono isolated drum stem, or None when unavailable
+    bass: np.ndarray | None  # mono isolated bass stem, or None when unavailable
     sr: int
 
 
 def separate_stems(audio: np.ndarray, sr: int, mode: str = "demucs") -> SeparationResult:
-    """Split *audio* into a pitched instrumental and an isolated drum stem.
+    """Split *audio* into a pitched instrumental plus isolated bass and drum stems.
 
-    - ``none``   -> input is the instrumental, no drum stem.
-    - ``demucs`` -> Demucs stems: instrumental = (all − vocals − drums), drums separate.
+    - ``none``   -> input is the instrumental, no bass/drum stems.
+    - ``demucs`` -> Demucs stems: instrumental = (all − vocals − drums − bass), bass & drums
+      kept separate.
     - ``spleeter`` -> not wired yet.
     """
     if mode == "none":
-        return SeparationResult(instrumental=audio, drums=None, sr=sr)
+        return SeparationResult(instrumental=audio, drums=None, bass=None, sr=sr)
     if mode == "demucs":
         return _separate_demucs(audio, sr)
     if mode == "spleeter":
@@ -83,12 +88,13 @@ def _separate_demucs(audio: np.ndarray, sr: int) -> SeparationResult:
     def stem_mono(name: str):
         return stems[names.index(name)].mean(dim=0)  # channels -> mono
 
-    # Pitched content = everything except vocals and drums.
-    pitched = [n for n in names if n not in ("vocals", "drums")]
+    # Pitched content = everything except vocals, drums, and bass (bass gets its own voice).
+    pitched = [n for n in names if n not in ("vocals", "drums", "bass")]
     inst = torch.stack([stem_mono(n) for n in pitched]).sum(dim=0)
     inst_np = inst.cpu().numpy().astype(np.float32)
 
     drums_np = stem_mono("drums").cpu().numpy().astype(np.float32) if "drums" in names else None
+    bass_np = stem_mono("bass").cpu().numpy().astype(np.float32) if "bass" in names else None
 
     if sr != model_sr:
         from .load_audio import _resample_linear
@@ -96,5 +102,7 @@ def _separate_demucs(audio: np.ndarray, sr: int) -> SeparationResult:
         inst_np = _resample_linear(inst_np, model_sr, sr)
         if drums_np is not None:
             drums_np = _resample_linear(drums_np, model_sr, sr)
+        if bass_np is not None:
+            bass_np = _resample_linear(bass_np, model_sr, sr)
 
-    return SeparationResult(instrumental=inst_np, drums=drums_np, sr=sr)
+    return SeparationResult(instrumental=inst_np, drums=drums_np, bass=bass_np, sr=sr)

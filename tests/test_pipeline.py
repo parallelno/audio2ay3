@@ -63,3 +63,28 @@ def test_arrange_empty_transcription_is_one_silent_frame():
     song = arrange(Transcription(), RunConfig())
     assert song.n_frames == 1
     assert np.all(song.frames[:, 7] == 0x3F)  # everything disabled
+
+
+def test_arrange_bass_and_lead_land_on_separate_channels():
+    # The Test-1 mono-collapse case: a low bass note and a high lead sounding together must
+    # both survive — bass on its dedicated channel A, lead on a free channel.
+    tr = Transcription(
+        notes=[Note(0.0, 0.2, 440.0, 1.0)],  # lead
+        bass_notes=[Note(0.0, 0.2, 80.0, 1.0)],  # bass
+    )
+    song = arrange(tr, RunConfig())
+
+    def tone_period(frame, ch):
+        return int(song.frames[frame, 2 * ch]) | (int(song.frames[frame, 2 * ch + 1]) << 8)
+
+    bass_tp = quantize_tone(80.0, CLOCK)
+    lead_tp = quantize_tone(440.0, CLOCK)
+
+    # Bass owns channel A; the lead lives on B or C — two distinct audible voices, no collapse.
+    assert tone_period(0, 0) == bass_tp
+    lead_channels = [ch for ch in (1, 2) if tone_period(0, ch) == lead_tp]
+    assert lead_channels, "lead note was dropped instead of getting its own channel"
+    mixer = int(song.frames[0, 7])
+    assert mixer & 0x01 == 0  # tone A (bass) enabled
+    assert mixer & (1 << lead_channels[0]) == 0  # tone on the lead's channel enabled
+

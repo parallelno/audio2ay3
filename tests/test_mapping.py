@@ -5,7 +5,7 @@ from __future__ import annotations
 from audio2ay3.analysis.model import Note, Percussion
 from audio2ay3.encode.register_stream import RegisterStreamBuilder
 from audio2ay3.mapping.percussion import apply_percussion
-from audio2ay3.mapping.voices import allocate_voices, n_frames_for
+from audio2ay3.mapping.voices import allocate_voices, n_frames_for, place_bass
 
 
 def test_empty_notes_allocate_to_silence():
@@ -85,3 +85,33 @@ def test_apply_percussion_scales_with_velocity():
     apply_percussion(loud, [Percussion(0.0, "snare", 1.0)], 50, 4)
     apply_percussion(soft, [Percussion(0.0, "snare", 0.4)], 50, 4)
     assert loud.finish()[0, 10] > soft.finish()[0, 10]
+
+
+def test_place_bass_reserves_channel_a_and_picks_the_lowest_note():
+    low = Note(onset_s=0.0, duration_s=0.2, pitch_hz=80.0, velocity=0.9)
+    high = Note(onset_s=0.0, duration_s=0.2, pitch_hz=160.0, velocity=1.0)
+    voices, reserved = place_bass([low, high], frame_rate_hz=50, n_frames=10)
+    # Bass sounds on every frame of its span and reserves channel A there.
+    for f in range(10):
+        assert reserved[f] == 0
+        assert voices[f] is not None
+        assert voices[f].pitch_hz == 80.0  # fundamental wins over the higher overlap
+
+
+def test_place_bass_leaves_silent_frames_free():
+    note = Note(onset_s=0.0, duration_s=0.06, pitch_hz=60.0, velocity=1.0)
+    voices, reserved = place_bass([note], frame_rate_hz=50, n_frames=10)
+    # Spans only the first 3 frames; the rest of the channel stays free for melody.
+    assert [r is not None for r in reserved] == [True, True, True] + [False] * 7
+    assert all(v is None for v in voices[3:])
+
+
+def test_allocate_voices_never_uses_a_reserved_channel():
+    note = Note(onset_s=0.0, duration_s=0.2, pitch_hz=440.0, velocity=1.0)
+    reserved = [0] * 10  # channel A owned by bass for the whole span
+    assignment = allocate_voices([note], frame_rate_hz=50, n_frames=10, reserved=reserved)
+    for f in range(10):
+        assert assignment[f][0] is None  # melody kept off the reserved channel
+        placed = [ch for ch in range(3) if assignment[f][ch] is not None]
+        assert placed and all(ch in (1, 2) for ch in placed)
+

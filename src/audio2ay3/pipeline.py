@@ -15,7 +15,7 @@ from .analysis.model import Transcription
 from .config import RunConfig
 from .encode import RegisterStreamBuilder, quantize_tone, velocity_to_amplitude
 from .encode.quantize import frames_for_duration
-from .mapping import allocate_voices, apply_percussion
+from .mapping import allocate_voices, apply_percussion, place_bass
 from .ymformat.model import YmSong
 
 
@@ -27,13 +27,21 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     end_s = max(
         tr.duration_s,
         max((n.offset_s for n in tr.notes), default=0.0),
+        max((n.offset_s for n in tr.bass_notes), default=0.0),
         # Pad a short decay tail only when percussion actually exists.
         (max(p.onset_s for p in tr.percussion) + 0.1) if tr.percussion else 0.0,
     )
     n_frames = frames_for_duration(end_s, frame_rate)
 
     builder = RegisterStreamBuilder(n_frames)
-    assignment = allocate_voices(tr.notes, frame_rate, n_frames)
+    # Bass owns a dedicated channel; the melodic allocator fills the channels left free.
+    bass_voices, reserved = place_bass(tr.bass_notes, frame_rate, n_frames)
+    assignment = allocate_voices(tr.notes, frame_rate, n_frames, reserved=reserved)
+    for f in range(n_frames):
+        ch = reserved[f]
+        if ch is not None:
+            assignment[f][ch] = bass_voices[f]
+
     for f in range(n_frames):
         for ch in range(3):
             voice = assignment[f][ch]
@@ -67,6 +75,10 @@ def convert(path: str, cfg: RunConfig) -> YmSong:
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     if stems.drums is not None:
         tr.percussion = detect_percussion(stems.drums, stems.sr)
+    if stems.bass is not None:
+        # Transcribe the isolated bass stem on its own; place_bass monophonises it later.
+        bass_tr = transcribe(stems.bass, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
+        tr.bass_notes = bass_tr.notes
     return arrange(tr, cfg, name=Path(path).stem)
 
 

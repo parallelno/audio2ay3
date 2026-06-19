@@ -39,10 +39,16 @@ class Percussion:
 
 @dataclass
 class Transcription:
-    """Everything the arranger needs: pitched notes, drum hits, and total length."""
+    """Everything the arranger needs: pitched notes, drum hits, and total length.
+
+    ``notes`` are the melodic/harmonic content (shared across the free tone channels).
+    ``bass_notes`` come from the isolated bass stem and get a dedicated channel so the low
+    end never has to fight the lead for a voice (see :func:`mapping.place_bass`).
+    """
 
     notes: list[Note] = field(default_factory=list)
     percussion: list[Percussion] = field(default_factory=list)
+    bass_notes: list[Note] = field(default_factory=list)
     duration_s: float = 0.0
 
     def sorted_notes(self) -> list[Note]:
