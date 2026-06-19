@@ -21,7 +21,14 @@ phases — see [What's not done yet](#whats-not-done-yet).
 
 ## Requirements
 
-- **Python 3.11 or 3.12** (3.12 recommended; 3.11 fully supported).
+- **Core (emulator, `validate`, tests):** Python 3.11 or 3.12.
+- **Neural converter (`convert`/`preview`, the `neural` extra):**
+  - **Python 3.11 — recommended.** `pip install -e ".[neural]"` resolves cleanly.
+  - **Python 3.12 — works, with one extra step.** Basic Pitch 0.4.0 declares a TensorFlow
+    dependency on Python ≥ 3.11 (`tensorflow>=2.4.1,<2.15.1`), but TF only ships 3.12 wheels from
+    2.16+, so that pin is unsatisfiable on 3.12 and the plain install fails. We never run
+    TensorFlow (the transcriber uses the **ONNX** model), so the fix is to install Basic Pitch
+    **without its dependencies** — see [Python 3.12: installing the neural extra](#python-312-installing-the-neural-extra).
 - Git.
 - ~2–6 GB free disk **if installing the `neural` extra** (pulls PyTorch + a transcription model
   runtime). The first `convert` with Demucs downloads model weights to a local cache.
@@ -34,7 +41,7 @@ phases — see [What's not done yet](#whats-not-done-yet).
 **Windows (PowerShell):**
 
 ```powershell
-py -3.12 -m venv .venv      # or: py -3.11 -m venv .venv
+py -3.11 -m venv .venv      # 3.11 = cleanest for the neural converter (3.12 also works — see below)
 .\.venv\Scripts\Activate.ps1
 python -m pip install -U pip
 ```
@@ -47,7 +54,7 @@ python -m pip install -U pip
 ```bash
 git clone <your-repo-url> audio2ay3
 cd audio2ay3
-python3.12 -m venv .venv     # or: python3.11 -m venv .venv
+python3.11 -m venv .venv     # 3.11 = cleanest for the neural converter (3.12 also works — see below)
 source .venv/bin/activate
 python -m pip install -U pip
 ```
@@ -63,12 +70,35 @@ Editable install with extras. Combine extras in one bracket, e.g. `".[dev,mp3]"`
 | …plus reading non-WAV audio (FLAC/OGG; needed by `convert`) | `pip install -e ".[dev,mp3,audio]"` |
 | **Full converter** (neural `convert`/`preview`) | `pip install -e ".[dev,mp3,neural]"` |
 
-The `neural` extra installs Demucs (PyTorch) for separation and Basic Pitch (with the
-**ONNX** runtime) for transcription, plus `soundfile` for decoding input audio.
+The `neural` extra installs Demucs (PyTorch) for separation and Basic Pitch (plus the
+**ONNX** runtime) for transcription, plus `soundfile` for decoding input audio. On **Python 3.11**
+the command above resolves as-is; on **Python 3.12** use the workaround just below.
 
-> **Note (Windows + TensorFlow):** Basic Pitch may also pull in TensorFlow. This project prefers
-> the **ONNX** backend for transcription and never runs TF inference, so a slow or fragile TF
-> install does not affect conversion. ONNX-only inference is the supported path.
+> **Note (TensorFlow):** Basic Pitch pulls in TensorFlow on Python ≥ 3.11, and installing it
+> downgrades `numpy` to the 1.26.x line — that's expected and numba/the emulator are fine with it.
+> This project prefers the **ONNX** model for transcription and never runs TF inference, so a slow
+> or fragile TF install does not affect conversion.
+
+### Python 3.12: installing the neural extra
+
+Basic Pitch's TensorFlow pin can't be satisfied on 3.12, but it isn't needed at runtime (we use
+ONNX). Install Basic Pitch with `--no-deps` and supply its real runtime deps yourself:
+
+```powershell
+pip install -e ".[dev,mp3,audio]"          # core + MP3 + audio decoding
+pip install demucs onnxruntime             # separation + the ONNX runtime we actually use
+pip install --no-deps basic-pitch          # skip its unsatisfiable tensorflow marker
+# Basic Pitch's genuine runtime deps (everything except tensorflow):
+pip install "librosa>=0.8.0" "mir_eval>=0.6.0" "pretty_midi>=0.2.9" `
+            "resampy>=0.2.2,<0.4.3" scikit-learn "scipy>=1.4.1" typing_extensions
+```
+
+Then verify the transcriber imports and selects the ONNX model:
+
+```powershell
+python -c "from audio2ay3.analysis.transcribe import _basic_pitch_model_path as p; print(p().name)"
+# -> nmp.onnx
+```
 
 ### 3. Verify the install
 

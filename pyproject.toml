@@ -18,9 +18,13 @@ dependencies = [
 mp3 = ["lameenc>=1.7"]
 audio = ["soundfile>=0.12"]
 # Neural analysis stack (default conversion path; heavy, opt-in to install).
-# basic-pitch[onnx] pulls onnxruntime so the light, portable ONNX backend is available;
-# soundfile decodes the input audio. Demucs (separation) pulls in torch and is the heaviest part.
-neural = ["demucs", "basic-pitch[onnx]", "soundfile>=0.12"]
+# Python 3.11: `pip install -e ".[neural]"` resolves cleanly.
+# Python 3.12: basic-pitch 0.4.0 pins tensorflow>=2.4.1,<2.15.1 (no 3.12 wheels exist in that
+# range), so the plain install fails. We use the ONNX model, not TF, so install basic-pitch with
+# `--no-deps` plus its real runtime deps instead (see README "Python 3.12: installing the neural
+# extra"). basic-pitch>=0.4.0 is pinned so 3.12 fails loudly rather than silently backtracking
+# into ancient releases that need numpy<1.24 (which collides with our numpy>=1.26).
+neural = ["demucs", "basic-pitch>=0.4.0", "onnxruntime", "soundfile>=0.12"]
 mt3 = ["t5x", "jax", "note-seq"]
 dev = ["pytest>=8", "pytest-xdist", "ruff", "mypy"]
 
