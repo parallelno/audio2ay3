@@ -146,6 +146,19 @@ def test_arrange_strikes_each_onset_at_full_peak():
     assert amp[1] == 12 and amp[2] == 12  # then follows the contour (scale_amplitude(15, 0.5))
 
 
+def test_arrange_flat_contour_still_decays_for_liveliness():
+    # A held note whose (whole-stem) contour is flat must still get a struck attack-and-decay
+    # shape, not a lifeless constant amplitude. The first frame strikes at peak; the synthetic
+    # envelope applied on top of the flat contour pulls later frames down to the sustain level.
+    note = Note(0.0, 0.3, 440.0, velocity=1.0, amp_contour=(1.0,) * 15)
+    song = arrange(Transcription(notes=[note]), RunConfig())  # no bass -> channel A (R8)
+    amp = song.frames[:15, 8].astype(int).tolist()
+    assert amp[0] == 15  # struck at peak
+    assert amp[-1] < amp[0]  # then decays -> not a flat, lifeless sustain
+    assert amp == sorted(amp, reverse=True)  # monotonically non-increasing (clean decay)
+    assert amp[-1] == 13  # settles at the sustain level (0.6 of peak in the log DAC)
+
+
 
 
 def test_arrange_ignores_contour_when_envelope_disabled():

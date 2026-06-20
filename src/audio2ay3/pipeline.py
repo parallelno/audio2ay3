@@ -85,9 +85,12 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
                     # fast repeated notes into one sustained tone (few strong onsets).
                     level = peak
                 else:
-                    # Apply the source loudness in the DAC's logarithmic domain so below-peak
-                    # frames aren't crushed into near-silence (a linear level*scale would be).
-                    level = max(1, scale_amplitude(peak, voice.amp_scale))
+                    # Shape the source loudness by the synthetic attack/decay so every note keeps
+                    # a struck character even where the (whole-stem) contour is flat — otherwise
+                    # dense passages collapse to a lifeless sustain. Applied in the DAC's
+                    # logarithmic domain so below-peak frames aren't crushed into near-silence.
+                    shaped = voice.amp_scale * env.factor(age[ch])
+                    level = max(1, scale_amplitude(peak, shaped))
             else:
                 level = env.level(age[ch], peak)
             builder.set_tone(f, ch, tone_period, level)

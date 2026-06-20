@@ -61,6 +61,23 @@ class AmpEnvelope:
             round(peak - (peak - sustain_level) * decay_age / self.decay_frames),
         )
 
+    def factor(self, age_frames: int) -> float:
+        """Attack/decay *shape* in ``[sustain, 1.0]`` for a note *age_frames* old (1.0 = full).
+
+        The amplitude-domain counterpart of :meth:`level`: the arranger multiplies a note's
+        source loudness contour by this so every note keeps a struck attack-and-decay shape even
+        when the (whole-stem) contour is flat — which is what otherwise made dense passages sound
+        like a sustained organ rather than individual piano notes.
+        """
+        if not self.enabled:
+            return 1.0
+        if self.attack_frames > 0 and age_frames < self.attack_frames:
+            return (age_frames + 1) / (self.attack_frames + 1)
+        decay_age = age_frames - self.attack_frames
+        if self.decay_frames <= 0 or decay_age >= self.decay_frames:
+            return self.sustain
+        return 1.0 - (1.0 - self.sustain) * decay_age / self.decay_frames
+
 
 @dataclass(frozen=True)
 class RunConfig:
