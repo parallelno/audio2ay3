@@ -64,9 +64,26 @@ def test_n_frames_for_covers_latest_offset():
     assert n_frames_for(notes, frame_rate_hz=50, duration_s=0.0) == 75
 
 
-def test_apply_percussion_overlays_noise_decay_on_channel_c():
+def test_apply_percussion_kick_is_a_tonal_low_sweep():
     builder = RegisterStreamBuilder(8)
     hits = [Percussion(onset_s=0.0, kind="kick", velocity=1.0)]
+    apply_percussion(builder, hits, frame_rate_hz=50, n_frames=8)
+    frames = builder.finish()
+
+    # The kick body is a tone (not noise): tone-on-C enabled, with a low pitch that sweeps
+    # downward (period rises) for a real low-end thump, and a decaying amplitude.
+    assert frames[0, 7] & (1 << 2) == 0  # tone-on-C enabled
+    periods = [int(frames[f, 4]) | (int(frames[f, 5]) << 8) for f in range(4)]
+    assert periods[0] >= 512  # low frequency (< ~217 Hz)
+    assert periods == sorted(periods)  # downward sweep -> rising period
+    decay = [int(frames[f, 10]) for f in range(4)]
+    assert decay[0] == 15
+    assert decay == sorted(decay, reverse=True)  # monotonically non-increasing
+
+
+def test_apply_percussion_snare_overlays_noise_decay_on_channel_c():
+    builder = RegisterStreamBuilder(8)
+    hits = [Percussion(onset_s=0.0, kind="snare", velocity=1.0)]
     apply_percussion(builder, hits, frame_rate_hz=50, n_frames=8)
     frames = builder.finish()
 
@@ -74,7 +91,7 @@ def test_apply_percussion_overlays_noise_decay_on_channel_c():
     assert frames[0, 7] & (1 << 5) == 0  # noise-on-C enabled
     assert frames[0, 7] & (1 << 2) != 0  # tone-on-C disabled
     assert frames[0, 6] > 0  # a noise period was programmed
-    decay = [int(frames[f, 10]) for f in range(4)]
+    decay = [int(frames[f, 10]) for f in range(3)]
     assert decay[0] == 15
     assert decay == sorted(decay, reverse=True)  # monotonically non-increasing
 
