@@ -25,7 +25,15 @@ audio = ["soundfile>=0.12"]
 # extra"). basic-pitch>=0.4.0 is pinned so 3.12 fails loudly rather than silently backtracking
 # into ancient releases that need numpy<1.24 (which collides with our numpy>=1.26).
 neural = ["demucs", "basic-pitch>=0.4.0", "onnxruntime", "soundfile>=0.12"]
-mt3 = ["t5x", "jax", "note-seq"]
+# MT3 multi-instrument transcription (Google Magenta). HEAVIEST path, fully opt-in; never touched
+# by the default conversion or the test suite. The `mt3` and `t5x` packages are not on PyPI, so
+# after installing this extra also add them from source, then point at a checkpoint:
+#   pip install -e ".[mt3]"
+#   pip install "t5x @ git+https://github.com/google-research/t5x"
+#   pip install "mt3 @ git+https://github.com/magenta/mt3"
+#   set AUDIO2AY3_MT3_CHECKPOINT=<dir of a checkpoint from gs://mt3/checkpoints>
+# Note: JAX has no native Windows wheels — run the MT3 path on Linux/WSL (CPU JAX is fine).
+mt3 = ["jax", "note-seq", "seqio", "t5", "gin-config", "tensorflow", "librosa"]
 dev = ["pytest>=8", "pytest-xdist", "ruff", "mypy"]
 
 [project.scripts]
