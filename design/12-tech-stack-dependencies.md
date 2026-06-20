@@ -128,6 +128,11 @@ build-backend = "hatchling.build"
   binary if a system install isn't available.
 - **Windows-first** (the dev environment) but no OS-specific code; paths via `pathlib`, processes
   via `subprocess` with explicit args.
+- **MT3 is Linux/WSL-only.** Not a JAX limitation — JAX ships native Windows x86_64 CPU wheels.
+  The blocker is `tensorflow-text` (pulled by `t5`/`seqio`), which has **no `win_amd64` wheel and
+  no sdist** (Linux + macOS-ARM only), so the `[mt3]` stack cannot `pip install` on native Windows.
+  Run `--transcription mt3` under WSL2/Linux (CPU is fine). The default Basic Pitch path is
+  cross-platform (ONNX) and unaffected.
 - **Determinism:** set seeds for `numpy`/`torch`; pin algorithm choices via `RunConfig` so runs
   reproduce across machines (modulo GPU non-determinism, which is confined to optional NN stages).
 
@@ -138,6 +143,7 @@ build-backend = "hatchling.build"
 | `torch` install size/CUDA mismatch | core path works without torch on CPU via librosa; document CUDA install |
 | `spleeter` drags TensorFlow | isolate behind `[spleeter]` extra; not default |
 | `mt3` is heavy (JAX/T5X + model weights) | isolate behind `[mt3]`; offer **Basic Pitch** as the light neural default; both opt-in |
+| `mt3` cannot install on native Windows (`tensorflow-text` has no Windows wheel/sdist) | document WSL2/Linux requirement; keep cross-platform Basic Pitch (ONNX) as the default; install MT3 via `pip install "mt3 @ git+https://github.com/magenta/mt3"` |
 | NN transcription weakens determinism | keep DSP note-source as the reproducible CI default; pin model weights/seeds; confine neural to non-CI quality profiles |
 | LHA packing edge cases | write uncompressed YM by default; packing optional/read-mostly |
 | ffmpeg absence | fall back to `imageio-ffmpeg`; clear error if a codec is missing |

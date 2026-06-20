@@ -100,6 +100,35 @@ python -c "from audio2ay3.analysis.transcribe import _basic_pitch_model_path as 
 # -> nmp.onnx
 ```
 
+### MT3 transcription (`--transcription mt3`) — experimental, Linux/WSL only
+
+MT3 (Google Magenta) is a heavyweight multi-instrument transcriber: one pass yields pitched
+notes, bass, and drums together with General-MIDI instrument identity, so it self-routes
+percussion and the bass line (no Demucs separation needed). It is fully opt-in and never touched
+by the default `convert` or the test suite.
+
+> **Windows is not supported for MT3.** Contrary to a common assumption, **JAX is not the
+> blocker** — JAX ships native Windows x86_64 CPU wheels now. The blocker is **`tensorflow-text`**
+> (pulled transitively by `t5`/`seqio`), which publishes **only Linux and macOS-ARM wheels — no
+> `win_amd64` wheel and no sdist**, so the stack cannot `pip install` on native Windows. Run MT3
+> under **WSL2 (Ubuntu)** or Linux. CPU-only is fine.
+
+```bash
+# In WSL2/Linux, Python 3.10–3.12. MT3's own setup.py is the authoritative installer: it pulls
+# t5x + flax + seqio + t5 + note-seq + tensorflow + tensorflow-datasets (and jax via flax).
+pip install "mt3 @ git+https://github.com/magenta/mt3"
+pip install -e .                           # audio2ay3 itself, same env
+
+# Download a checkpoint (large) from the public GCS bucket, then point at its directory:
+gsutil -m cp -r gs://mt3/checkpoints/mt3 ./mt3-checkpoint      # or the https://storage.googleapis.com/mt3/... mirror
+export AUDIO2AY3_MT3_CHECKPOINT="$PWD/mt3-checkpoint"
+
+python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.ym --transcription mt3
+```
+
+> **Version drift:** `t5x`/`jax`/`flax` break across releases. If the install or a run fails on
+> version errors, match the pins in MT3's [upstream colab](https://github.com/magenta/mt3/blob/main/mt3/colab/music_transcription_with_transformers.ipynb).
+
 ### 3. Verify the install
 
 ```powershell

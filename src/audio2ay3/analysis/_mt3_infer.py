@@ -11,11 +11,17 @@ model + gin configs but no stable ``audio -> NoteSequence`` entry point; the ref
 colab class reproduced below, adapted to discover its gin files from the installed package and to
 take the checkpoint directory from ``AUDIO2AY3_MT3_CHECKPOINT``.
 
-Setup (on a machine with a working CPU/GPU; see the ``[mt3]`` extra):
+Setup (see the ``[mt3]`` extra). MT3's own ``setup.py`` is the authoritative installer — it pulls
+t5x/flax/seqio/t5/note-seq/tensorflow/tensorflow-datasets (and jax via flax):
 
-    pip install -e ".[mt3]"
+    pip install "mt3 @ git+https://github.com/magenta/mt3"
     # download a checkpoint, e.g. the "mt3" multi-instrument checkpoint from gs://mt3/checkpoints
     setx AUDIO2AY3_MT3_CHECKPOINT  C:\\path\\to\\mt3\\checkpoint
+
+Platform note: JAX *does* publish native Windows CPU wheels now, but the stack still cannot
+pip-install on native Windows because ``tensorflow-text`` (pulled by t5/seqio) ships no Windows
+wheel or sdist — only Linux/macOS-ARM. Run MT3 under WSL2 or Linux. Mind the version pins in the
+upstream colab; t5x/jax/flax drift across releases.
 
 The output is a :class:`note_seq.NoteSequence`; :func:`audio2ay3.analysis.transcribe`
 .note_sequence_to_transcription turns it into the neutral IR.

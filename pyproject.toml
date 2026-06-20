@@ -26,13 +26,17 @@ audio = ["soundfile>=0.12"]
 # into ancient releases that need numpy<1.24 (which collides with our numpy>=1.26).
 neural = ["demucs", "basic-pitch>=0.4.0", "onnxruntime", "soundfile>=0.12"]
 # MT3 multi-instrument transcription (Google Magenta). HEAVIEST path, fully opt-in; never touched
-# by the default conversion or the test suite. The `mt3` and `t5x` packages are not on PyPI, so
-# after installing this extra also add them from source, then point at a checkpoint:
-#   pip install -e ".[mt3]"
-#   pip install "t5x @ git+https://github.com/google-research/t5x"
-#   pip install "mt3 @ git+https://github.com/magenta/mt3"
-#   set AUDIO2AY3_MT3_CHECKPOINT=<dir of a checkpoint from gs://mt3/checkpoints>
-# Note: JAX has no native Windows wheels — run the MT3 path on Linux/WSL (CPU JAX is fine).
+# by the default conversion or the test suite. `mt3` (and its dep `t5x`) are not on PyPI; the
+# authoritative install is mt3's own setup.py, which drags the rest of the stack
+# (t5x + flax + seqio + t5 + note-seq + tensorflow + tensorflow-datasets, and jax via flax):
+#   pip install "mt3 @ git+https://github.com/magenta/mt3"   # pulls t5x/flax/seqio/t5/tf/...
+#   set AUDIO2AY3_MT3_CHECKPOINT=<dir of a checkpoint from gs://mt3/checkpoints>  # gsutil/https
+# Platform: JAX *does* ship native Windows x86_64 CPU wheels (experimental), so JAX itself is not
+# the blocker. The blocker is `tensorflow-text` (required transitively by t5/seqio): it publishes
+# Linux + macOS-ARM wheels only — no win_amd64 wheel and no sdist — so the MT3 stack cannot
+# pip-install on native Windows. Run it under WSL2 or Linux. The pinned versions in mt3's colab
+# matter (t5x/jax/flax break across releases); prefer following that colab's exact pins.
+# This extra is just the convenience subset that is on PyPI; you still need the git install above.
 mt3 = ["jax", "note-seq", "seqio", "t5", "gin-config", "tensorflow", "librosa"]
 dev = ["pytest>=8", "pytest-xdist", "ruff", "mypy"]
 
