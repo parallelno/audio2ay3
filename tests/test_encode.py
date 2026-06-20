@@ -12,10 +12,12 @@ from audio2ay3.encode.quantize import (
     hz_to_noise_period,
     hz_to_tone_period,
     quantize_tone,
+    scale_amplitude,
     seconds_to_frame,
     tone_period_to_hz,
     velocity_to_amplitude,
 )
+from audio2ay3.chip.volume_tables import AY_DAC
 from audio2ay3.encode.register_stream import ENV_NO_RETRIGGER, RegisterStreamBuilder
 
 CLOCK = 1_773_400
@@ -51,6 +53,30 @@ def test_velocity_to_amplitude_endpoints_and_mid():
     assert velocity_to_amplitude(1.0) == AMP_MAX
     assert velocity_to_amplitude(2.0) == AMP_MAX  # clamped
     assert velocity_to_amplitude(0.5) == 8  # round(0.5 * 15)
+
+
+def test_scale_amplitude_edges():
+    assert scale_amplitude(15, 1.0) == 15  # no attenuation
+    assert scale_amplitude(15, 0.0) == 0  # silence
+    assert scale_amplitude(0, 0.5) == 0  # nothing to scale
+    assert scale_amplitude(15, 2.0) == 15  # over-unity clamped to peak
+
+
+def test_scale_amplitude_targets_voltage_not_level():
+    # Half the peak's *voltage* (1.0) is ~0.5, which is level 12 (0.5043) — not level 8 a naive
+    # level*0.5 would give. This is the fix for the contour path sounding far too quiet.
+    assert scale_amplitude(15, 0.5) == 12
+    assert AY_DAC[12] == 0.5043
+    assert scale_amplitude(15, 0.25) == 10  # ~0.25 -> 0.2392 at level 10
+
+
+def test_scale_amplitude_is_monotonic_and_never_exceeds_peak():
+    peak = 12
+    levels = [scale_amplitude(peak, s / 10.0) for s in range(11)]
+    assert levels == sorted(levels)  # louder scale -> higher (or equal) level
+    assert all(lvl <= peak for lvl in levels)
+    assert levels[-1] == peak  # scale 1.0 reaches the peak
+
 
 
 def test_noise_period_clamped():

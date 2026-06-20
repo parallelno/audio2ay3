@@ -21,7 +21,12 @@ from .analysis import (
 )
 from .analysis.model import Transcription
 from .config import RunConfig
-from .encode import RegisterStreamBuilder, quantize_tone, velocity_to_amplitude
+from .encode import (
+    RegisterStreamBuilder,
+    quantize_tone,
+    scale_amplitude,
+    velocity_to_amplitude,
+)
 from .encode.quantize import frames_for_duration
 from .mapping import allocate_voices, apply_percussion, place_bass
 from .ymformat.model import YmSong
@@ -74,7 +79,9 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             # rounding silence it — floor a placed note to the quietest audible amplitude.
             peak = max(1, velocity_to_amplitude(voice.velocity))
             if env.enabled and voice.amp_scale is not None:
-                level = max(1, round(peak * voice.amp_scale))
+                # Apply the source loudness in the DAC's logarithmic domain so below-peak
+                # frames aren't crushed into near-silence (a linear level*scale would be).
+                level = max(1, scale_amplitude(peak, voice.amp_scale))
             else:
                 level = env.level(age[ch], peak)
             builder.set_tone(f, ch, tone_period, level)

@@ -126,11 +126,14 @@ def test_arrange_flat_when_envelope_disabled():
 
 def test_arrange_follows_source_amp_contour():
     # A note carrying a source loudness contour: the channel amplitude tracks it frame-by-frame,
-    # overriding the synthetic envelope so the note keeps the original's character.
+    # overriding the synthetic envelope so the note keeps the original's character. The contour
+    # is applied in the DAC's logarithmic domain (scale_amplitude), so a 0.4 voltage frame lands
+    # near level 11 (~0.35 output), not level 6 a naive level*0.4 would give.
     note = Note(0.0, 0.08, 440.0, velocity=1.0, amp_contour=(1.0, 0.8, 0.4, 0.2))
     song = arrange(Transcription(notes=[note]), RunConfig())  # no bass -> channel A (R8)
     amp = song.frames[:4, 8].astype(int).tolist()
-    assert amp == [15, 12, 6, 3]  # round(15 * contour), not the synthetic 15,14,14,13
+    assert amp == [15, 14, 11, 9]
+
 
 
 def test_arrange_ignores_contour_when_envelope_disabled():

@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import math
 
+from ..chip.volume_tables import AY_DAC
+
 # 12-bit tone period. TP=0 behaves like TP=1 on hardware, so 1 is the usable floor.
 TONE_PERIOD_MIN = 1
 TONE_PERIOD_MAX = 4095
@@ -62,6 +64,24 @@ def velocity_to_amplitude(velocity: float) -> int:
     if velocity >= 1.0:
         return AMP_MAX
     return int(round(velocity * AMP_MAX))
+
+
+def scale_amplitude(peak_level: int, scale: float) -> int:
+    """Attenuate amplitude *peak_level* by a linear voltage ratio *scale* (0..1).
+
+    The 16 amplitude levels are spaced logarithmically (see :data:`AY_DAC`), so multiplying the
+    *level* by *scale* would over-attenuate badly — ``level * 0.5`` drops the output **voltage**
+    far more than half. Instead we target ``scale`` times the peak level's output voltage and
+    return the nearest level, so a frame at half a note's loudness actually sounds half as loud.
+    """
+    peak = max(0, min(AMP_MAX, peak_level))
+    if peak <= 0 or scale <= 0.0:
+        return 0
+    if scale >= 1.0:
+        return peak
+    target = float(AY_DAC[peak]) * scale
+    return min(range(peak + 1), key=lambda i: abs(float(AY_DAC[i]) - target))
+
 
 
 def hz_to_noise_period(freq_hz: float, master_clock_hz: int) -> int:
