@@ -8,8 +8,9 @@ __pycache__/
 venv/
 env/
 
-# Build / dist
-build/
+# Build / dist (outputs ignored, but keep tracked tooling like diag.py)
+build/*
+!build/diag.py
 dist/
 *.egg-info/
 .eggs/
