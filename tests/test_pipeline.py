@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from audio2ay3.analysis.model import Note, Percussion, Transcription
-from audio2ay3.config import RunConfig
+from audio2ay3.config import AmpEnvelope, RunConfig
 from audio2ay3.encode.quantize import quantize_tone
 from audio2ay3.pipeline import arrange
 from audio2ay3.render import Renderer
@@ -87,4 +87,39 @@ def test_arrange_bass_and_lead_land_on_separate_channels():
     mixer = int(song.frames[0, 7])
     assert mixer & 0x01 == 0  # tone A (bass) enabled
     assert mixer & (1 << lead_channels[0]) == 0  # tone on the lead's channel enabled
+
+
+def test_amp_envelope_level_strikes_then_decays_to_sustain():
+    env = AmpEnvelope(attack_frames=0, decay_frames=10, sustain=0.6)
+    assert env.level(0, 15) == 15  # onset strike at peak
+    assert env.level(1, 15) < 15  # decaying
+    # Non-increasing across the decay, settling at the sustain level (round(15*0.6)=9).
+    levels = [env.level(a, 15) for a in range(20)]
+    assert levels == sorted(levels, reverse=True)
+    assert levels[-1] == 9
+    assert env.level(0, 0) == 0  # a silent note stays silent
+
+
+def test_amp_envelope_disabled_is_flat():
+    env = AmpEnvelope(enabled=False)
+    assert env.level(0, 12) == env.level(5, 12) == env.level(50, 12) == 12
+
+
+def test_arrange_amplitude_envelope_decays_and_restrikes():
+    # Two back-to-back lead notes: each should strike at full and decay, the second re-striking.
+    tr = Transcription(notes=[Note(0.0, 0.4, 440.0, 1.0), Note(0.4, 0.4, 440.0, 1.0)])
+    song = arrange(tr, RunConfig())  # no bass -> lead lands on channel A (R8)
+    amp = song.frames[:, 8].astype(int)
+    assert amp[0] == 15  # first strike
+    assert amp[19] < amp[0]  # decayed by the end of the first note
+    assert amp[20] == 15  # second note re-strikes to peak
+    assert amp[20] > amp[19]
+
+
+def test_arrange_flat_when_envelope_disabled():
+    tr = Transcription(notes=[Note(0.0, 0.4, 440.0, 1.0)])
+    cfg = RunConfig(amp_envelope=AmpEnvelope(enabled=False))
+    song = arrange(tr, cfg)
+    amp = song.frames[:20, 8].astype(int)
+    assert set(amp.tolist()) == {15}  # constant, no shaping
 

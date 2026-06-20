@@ -25,6 +25,44 @@ class ChipConfig:
 
 
 @dataclass(frozen=True)
+class AmpEnvelope:
+    """Per-note **software** amplitude shape (attack / decay / sustain).
+
+    The arranger writes this straight to the amplitude registers (R8-R10) every frame, so each
+    note gets an independent attack and decay that the chip reproduces verbatim. This is the
+    primary timbre/decay tool and is deliberately *not* the AY's shared hardware envelope
+    generator (which is a single contended resource that's hard to tame); that path stays opt-in.
+
+    Times are in 50 Hz frames (one frame = 20 ms). ``sustain`` is a fraction of the note's peak
+    amplitude: ``1.0`` means a flat note (no decay), lower values give a plucky fall-off.
+    """
+
+    enabled: bool = True
+    attack_frames: int = 0  # frames to ramp up to peak at the onset (0 = instant strike)
+    decay_frames: int = 10  # frames to fall from peak to the sustain level (~200 ms)
+    sustain: float = 0.6  # sustain level as a fraction of peak (1.0 = no decay)
+
+    def level(self, age_frames: int, peak: int) -> int:
+        """Amplitude (0..*peak*) for a note *age_frames* into its life at the given *peak*."""
+        if peak <= 0:
+            return 0
+        if not self.enabled:
+            return peak
+        if self.attack_frames > 0 and age_frames < self.attack_frames:
+            # Linear attack ramp; never below 1 so the very first frame is audible.
+            return max(1, round(peak * (age_frames + 1) / (self.attack_frames + 1)))
+        sustain_level = max(1, round(peak * self.sustain))
+        decay_age = age_frames - self.attack_frames
+        if self.decay_frames <= 0 or decay_age >= self.decay_frames:
+            return sustain_level
+        # Linear decay from peak down to the sustain level over decay_frames.
+        return max(
+            sustain_level,
+            round(peak - (peak - sustain_level) * decay_age / self.decay_frames),
+        )
+
+
+@dataclass(frozen=True)
 class RunConfig:
     """End-to-end run configuration."""
 
@@ -38,3 +76,4 @@ class RunConfig:
     oversample: int = 2
     mp3_bitrate_kbps: int = 192
     seed: int = 0
+    amp_envelope: AmpEnvelope = field(default_factory=AmpEnvelope)

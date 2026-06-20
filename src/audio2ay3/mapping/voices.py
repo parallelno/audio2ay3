@@ -96,7 +96,10 @@ def place_bass(
         if not active:
             continue
         s = min(active, key=lambda sp: sp.pitch_hz)
-        bass_voices[f] = Voice(s.pitch_hz, s.velocity, s.note_id)
+        # Negative note-id namespace keeps bass notes distinct from melodic notes, so a bass
+        # note and a melodic note that share an index can never be mistaken for one held note
+        # when channel A flips between them (the arranger keys its envelope off note identity).
+        bass_voices[f] = Voice(s.pitch_hz, s.velocity, -(s.note_id + 1))
         reserved[f] = channel
     return bass_voices, reserved
 

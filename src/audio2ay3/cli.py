@@ -22,6 +22,8 @@ def _default_out(inp: str, ext: str) -> str:
 
 
 def _build_run_config(args: argparse.Namespace) -> RunConfig:
+    from .config import AmpEnvelope
+
     base = ChipConfig()
     chip = ChipConfig(
         master_clock_hz=getattr(args, "clock", None) or base.master_clock_hz,
@@ -37,6 +39,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         oversample=getattr(args, "oversample", 2),
         mp3_bitrate_kbps=getattr(args, "bitrate", 192),
         seed=getattr(args, "seed", 0),
+        amp_envelope=AmpEnvelope(enabled=not getattr(args, "no_amp_envelope", False)),
     )
 
 
@@ -133,6 +136,11 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--seed", type=int, default=0, help="deterministic seed")
 
 
+def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
+    sp.add_argument("--no-amp-envelope", action="store_true", dest="no_amp_envelope",
+                    help="disable per-note amplitude shaping (flat, constant-volume notes)")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="audio2ay3",
@@ -157,6 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("input", help="input audio file (WAV/FLAC/OGG; MP3 if libsndfile supports)")
     c.add_argument("-o", "--output", help="output .ym (default: build/<name>.ym)")
     _add_analysis_args(c)
+    _add_arrangement_args(c)
     c.set_defaults(func=cmd_convert)
 
     pr = sub.add_parser("preview", help="Convert audio then emulate it to audio")
@@ -168,6 +177,7 @@ def build_parser() -> argparse.ArgumentParser:
     pr.add_argument("--bitrate", type=int, default=192, help="MP3 bitrate (kbps)")
     pr.add_argument("--duration", type=float, default=None, help="limit output seconds")
     _add_analysis_args(pr)
+    _add_arrangement_args(pr)
     pr.set_defaults(func=cmd_preview)
 
     return p

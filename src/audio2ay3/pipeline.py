@@ -44,18 +44,29 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
         if ch is not None:
             assignment[f][ch] = bass_voices[f]
 
+    # Per-note amplitude envelope: track how many frames each channel's current note has been
+    # sounding, so the envelope re-strikes (age 0) whenever the note on a channel changes.
+    env = cfg.amp_envelope
+    cur_note: list[int | None] = [None, None, None]
+    age = [0, 0, 0]
     for f in range(n_frames):
         for ch in range(3):
             voice = assignment[f][ch]
             if voice is None:
+                cur_note[ch] = None
                 continue
+            if voice.note_id != cur_note[ch]:
+                cur_note[ch] = voice.note_id
+                age[ch] = 0
+            else:
+                age[ch] += 1
             tone_period = quantize_tone(voice.pitch_hz, clock)
             if tone_period <= 0:
                 continue
             # The allocator already decided this voice should sound; never let velocity
             # rounding silence it — floor a placed note to the quietest audible amplitude.
-            amplitude = max(1, velocity_to_amplitude(voice.velocity))
-            builder.set_tone(f, ch, tone_period, amplitude)
+            peak = max(1, velocity_to_amplitude(voice.velocity))
+            builder.set_tone(f, ch, tone_period, env.level(age[ch], peak))
 
     apply_percussion(builder, tr.percussion, frame_rate, n_frames)
 
