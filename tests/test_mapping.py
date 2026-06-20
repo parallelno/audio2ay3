@@ -88,11 +88,18 @@ def test_apply_percussion_scales_with_velocity():
 
 
 def test_apply_percussion_velocity_scales_in_voltage_domain():
-    # A soft hit must stay audible: voltage-domain scaling lands a velocity-0.4 snare near level
-    # 11 (~0.35 output), not the level 6 a naive level*0.4 would crush it to.
-    soft = RegisterStreamBuilder(4)
-    apply_percussion(soft, [Percussion(0.0, "snare", 0.4)], 50, 4)
-    assert soft.finish()[0, 10] == 11  # scale_amplitude(15, 0.4)
+    # Above the floor, scaling is voltage-domain: a velocity-0.8 snare lands at level 14
+    # (~0.81 output), not the level 12 a naive level*0.8 would give.
+    hit = RegisterStreamBuilder(4)
+    apply_percussion(hit, [Percussion(0.0, "snare", 0.8)], 50, 4)
+    assert hit.finish()[0, 10] == 14  # scale_amplitude(15, 0.8)
+
+
+def test_apply_percussion_floors_weak_hits():
+    # Erratic, very soft detections are floored so every drum still lands strong and consistent.
+    weak = RegisterStreamBuilder(4)
+    apply_percussion(weak, [Percussion(0.0, "snare", 0.1)], 50, 4)
+    assert weak.finish()[0, 10] == 13  # scale_amplitude(15, _MIN_DRUM_SCALE=0.7)
 
 
 

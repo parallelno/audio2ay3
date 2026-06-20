@@ -135,6 +135,18 @@ def test_arrange_follows_source_amp_contour():
     assert amp == [15, 14, 11, 9]
 
 
+def test_arrange_strikes_each_onset_at_full_peak():
+    # The first frame of every note is struck at its full (velocity-scaled) peak regardless of
+    # the source contour, so fast repeated notes keep a sharp attack instead of fusing into one
+    # sustained tone. Subsequent frames follow the contour.
+    note = Note(0.0, 0.06, 440.0, velocity=1.0, amp_contour=(0.5, 0.5, 0.5))
+    song = arrange(Transcription(notes=[note]), RunConfig())
+    amp = song.frames[:3, 8].astype(int).tolist()
+    assert amp[0] == 15  # struck at peak even though contour[0] = 0.5
+    assert amp[1] == 12 and amp[2] == 12  # then follows the contour (scale_amplitude(15, 0.5))
+
+
+
 
 def test_arrange_ignores_contour_when_envelope_disabled():
     note = Note(0.0, 0.08, 440.0, velocity=1.0, amp_contour=(1.0, 0.5, 0.5, 0.25))

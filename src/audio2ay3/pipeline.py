@@ -79,9 +79,15 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             # rounding silence it — floor a placed note to the quietest audible amplitude.
             peak = max(1, velocity_to_amplitude(voice.velocity))
             if env.enabled and voice.amp_scale is not None:
-                # Apply the source loudness in the DAC's logarithmic domain so below-peak
-                # frames aren't crushed into near-silence (a linear level*scale would be).
-                level = max(1, scale_amplitude(peak, voice.amp_scale))
+                if age[ch] == 0:
+                    # Strike each note's first frame at its full (velocity-scaled) peak so every
+                    # onset has a sharp attack. Without this, the smoothed source contour blurs
+                    # fast repeated notes into one sustained tone (few strong onsets).
+                    level = peak
+                else:
+                    # Apply the source loudness in the DAC's logarithmic domain so below-peak
+                    # frames aren't crushed into near-silence (a linear level*scale would be).
+                    level = max(1, scale_amplitude(peak, voice.amp_scale))
             else:
                 level = env.level(age[ch], peak)
             builder.set_tone(f, ch, tone_period, level)

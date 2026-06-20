@@ -17,6 +17,11 @@ from ..encode.register_stream import RegisterStreamBuilder
 
 PERCUSSION_CHANNEL = 2  # channel C
 
+# Detected drum velocities are erratic and frequently low (onset-strength normalisation pushes
+# most hits well below the loudest). Floor them so every hit lands strong and consistent —
+# matching the prominent, steady drums of typical sources — rather than flickering in and out.
+_MIN_DRUM_SCALE = 0.7
+
 
 @dataclass(frozen=True)
 class _Recipe:
@@ -44,7 +49,7 @@ def apply_percussion(
     for hit in percussion:
         recipe = _RECIPES.get(hit.kind, _RECIPES["snare"])
         onset = seconds_to_frame(hit.onset_s, frame_rate_hz)
-        scale = max(0.0, min(1.0, hit.velocity))
+        scale = max(_MIN_DRUM_SCALE, min(1.0, hit.velocity))
         for i, level in enumerate(recipe.decay):
             f = onset + i
             if f < 0 or f >= n_frames:
