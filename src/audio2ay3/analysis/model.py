@@ -22,6 +22,12 @@ class Note:
     duration_s: float
     pitch_hz: float
     velocity: float = 1.0  # perceptual loudness, 0..1
+    # Per-frame loudness shape sampled from the source stem across the note's span, normalised
+    # so 1.0 is the note's loudest frame. Frame ``k`` corresponds to ``onset + k`` at the
+    # frame rate. Empty when no source envelope is available; the arranger then falls back to a
+    # synthetic amplitude envelope. This is what lets a held note sustain and a pluck decay
+    # like the original instead of every note sharing one fixed curve.
+    amp_contour: tuple[float, ...] = ()
 
     @property
     def offset_s(self) -> float:

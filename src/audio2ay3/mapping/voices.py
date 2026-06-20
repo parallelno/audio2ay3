@@ -30,6 +30,10 @@ class Voice:
     pitch_hz: float
     velocity: float
     note_id: int
+    # Source-derived loudness for this exact frame (0..1, relative to the note's peak), or
+    # ``None`` when the note carries no contour and the arranger should use its synthetic
+    # envelope instead.
+    amp_scale: float | None = None
 
 
 @dataclass
@@ -39,6 +43,19 @@ class _Span:
     end: int  # exclusive
     pitch_hz: float
     velocity: float
+    contour: tuple[float, ...] = ()
+
+
+def _contour_scale(span: _Span, frame: int) -> float | None:
+    """The note's loudness at *frame* (clamped to the contour's ends), or ``None`` if absent."""
+    if not span.contour:
+        return None
+    idx = frame - span.start
+    if idx < 0:
+        idx = 0
+    elif idx >= len(span.contour):
+        idx = len(span.contour) - 1
+    return span.contour[idx]
 
 
 def _priority(span: _Span) -> tuple[float, float]:
@@ -59,7 +76,9 @@ def _spans_from_notes(
         start = max(0, start)
         end = min(n_frames, end)
         if start < end:
-            spans.append(_Span(note_id, start, end, note.pitch_hz, note.velocity))
+            spans.append(
+                _Span(note_id, start, end, note.pitch_hz, note.velocity, note.amp_contour)
+            )
     return spans
 
 
@@ -99,7 +118,7 @@ def place_bass(
         # Negative note-id namespace keeps bass notes distinct from melodic notes, so a bass
         # note and a melodic note that share an index can never be mistaken for one held note
         # when channel A flips between them (the arranger keys its envelope off note identity).
-        bass_voices[f] = Voice(s.pitch_hz, s.velocity, -(s.note_id + 1))
+        bass_voices[f] = Voice(s.pitch_hz, s.velocity, -(s.note_id + 1), _contour_scale(s, f))
         reserved[f] = channel
     return bass_voices, reserved
 
@@ -138,7 +157,7 @@ def allocate_voices(
             pid = prev_ids[ch]
             if pid is not None and pid in by_id:
                 s = by_id[pid]
-                current[ch] = Voice(s.pitch_hz, s.velocity, s.note_id)
+                current[ch] = Voice(s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f))
                 taken.add(pid)
 
         # 2) Fill free usable channels with the highest-priority unplaced notes.
@@ -147,7 +166,7 @@ def allocate_voices(
             (s for s in active if s.note_id not in taken), key=_priority
         )
         for ch, s in zip(free, remaining):
-            current[ch] = Voice(s.pitch_hz, s.velocity, s.note_id)
+            current[ch] = Voice(s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f))
 
         assignment[f] = current
         prev_ids = [v.note_id if v is not None else None for v in current]

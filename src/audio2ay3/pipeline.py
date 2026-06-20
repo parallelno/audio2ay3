@@ -12,7 +12,13 @@ from pathlib import Path
 
 import numpy as np
 
-from .analysis import detect_percussion, load_audio, separate_stems, transcribe
+from .analysis import (
+    attach_amp_contours,
+    detect_percussion,
+    load_audio,
+    separate_stems,
+    transcribe,
+)
 from .analysis.model import Transcription
 from .config import RunConfig
 from .encode import RegisterStreamBuilder, quantize_tone, velocity_to_amplitude
@@ -44,8 +50,9 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
         if ch is not None:
             assignment[f][ch] = bass_voices[f]
 
-    # Per-note amplitude envelope: track how many frames each channel's current note has been
-    # sounding, so the envelope re-strikes (age 0) whenever the note on a channel changes.
+    # Per-note amplitude shaping. When a voice carries a source-derived loudness for this frame
+    # (amp_scale), follow it so the note keeps the original's character; otherwise fall back to
+    # the synthetic envelope. Both are gated by amp_envelope.enabled (off -> flat amplitude).
     env = cfg.amp_envelope
     cur_note: list[int | None] = [None, None, None]
     age = [0, 0, 0]
@@ -66,7 +73,11 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             # The allocator already decided this voice should sound; never let velocity
             # rounding silence it — floor a placed note to the quietest audible amplitude.
             peak = max(1, velocity_to_amplitude(voice.velocity))
-            builder.set_tone(f, ch, tone_period, env.level(age[ch], peak))
+            if env.enabled and voice.amp_scale is not None:
+                level = max(1, round(peak * voice.amp_scale))
+            else:
+                level = env.level(age[ch], peak)
+            builder.set_tone(f, ch, tone_period, level)
 
     apply_percussion(builder, tr.percussion, frame_rate, n_frames)
 
@@ -86,6 +97,12 @@ def convert(path: str, cfg: RunConfig) -> YmSong:
     audio, sr = load_audio(path, cfg.render_sr)
     stems = separate_stems(audio, sr, cfg.separation)
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
+    # Follow each note's real loudness shape from its own stem so held notes sustain and plucks
+    # decay like the original; skipped under --no-amp-envelope, which wants flat amplitude.
+    if cfg.amp_envelope.enabled:
+        tr.notes = attach_amp_contours(
+            tr.notes, stems.instrumental, stems.sr, cfg.chip.frame_rate_hz
+        )
     if stems.drums is not None:
         # Reference the whole-track RMS so a drum-less stem's residual bleed can't fire phantom
         # hits (its velocities are otherwise normalised against its own near-silent dynamics).
@@ -94,7 +111,12 @@ def convert(path: str, cfg: RunConfig) -> YmSong:
     if stems.bass is not None:
         # Transcribe the isolated bass stem on its own; place_bass monophonises it later.
         bass_tr = transcribe(stems.bass, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
-        tr.bass_notes = bass_tr.notes
+        bass_notes = bass_tr.notes
+        if cfg.amp_envelope.enabled:
+            bass_notes = attach_amp_contours(
+                bass_notes, stems.bass, stems.sr, cfg.chip.frame_rate_hz
+            )
+        tr.bass_notes = bass_notes
     return arrange(tr, cfg, name=Path(path).stem)
 
 

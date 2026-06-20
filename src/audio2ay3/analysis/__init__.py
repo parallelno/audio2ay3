@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .dynamics import attach_amp_contours
 from .load_audio import load_audio
 from .model import Note, Percussion, Transcription
 from .percussion_detect import detect_percussion
@@ -13,6 +14,7 @@ __all__ = [
     "Percussion",
     "SeparationResult",
     "Transcription",
+    "attach_amp_contours",
     "detect_percussion",
     "load_audio",
     "separate",

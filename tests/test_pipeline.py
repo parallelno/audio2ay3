@@ -123,3 +123,21 @@ def test_arrange_flat_when_envelope_disabled():
     amp = song.frames[:20, 8].astype(int)
     assert set(amp.tolist()) == {15}  # constant, no shaping
 
+
+def test_arrange_follows_source_amp_contour():
+    # A note carrying a source loudness contour: the channel amplitude tracks it frame-by-frame,
+    # overriding the synthetic envelope so the note keeps the original's character.
+    note = Note(0.0, 0.08, 440.0, velocity=1.0, amp_contour=(1.0, 0.8, 0.4, 0.2))
+    song = arrange(Transcription(notes=[note]), RunConfig())  # no bass -> channel A (R8)
+    amp = song.frames[:4, 8].astype(int).tolist()
+    assert amp == [15, 12, 6, 3]  # round(15 * contour), not the synthetic 15,14,14,13
+
+
+def test_arrange_ignores_contour_when_envelope_disabled():
+    note = Note(0.0, 0.08, 440.0, velocity=1.0, amp_contour=(1.0, 0.5, 0.5, 0.25))
+    cfg = RunConfig(amp_envelope=AmpEnvelope(enabled=False))
+    song = arrange(Transcription(notes=[note]), cfg)
+    amp = song.frames[:4, 8].astype(int)
+    assert set(amp.tolist()) == {15}  # flat: the contour is ignored when shaping is off
+
+

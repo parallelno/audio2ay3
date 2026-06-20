@@ -115,3 +115,34 @@ def test_allocate_voices_never_uses_a_reserved_channel():
         placed = [ch for ch in range(3) if assignment[f][ch] is not None]
         assert placed and all(ch in (1, 2) for ch in placed)
 
+
+def test_allocate_voices_resolves_per_frame_amp_scale_from_contour():
+    # A four-frame note carrying a source contour: each frame's voice exposes that frame's value.
+    note = Note(
+        onset_s=0.0, duration_s=0.08, pitch_hz=440.0, velocity=1.0,
+        amp_contour=(1.0, 0.75, 0.5, 0.25),
+    )
+    assignment = allocate_voices([note], frame_rate_hz=50, n_frames=4)
+    scales = []
+    for f in range(4):
+        voice = next(v for v in assignment[f] if v is not None)
+        scales.append(voice.amp_scale)
+    assert scales == [1.0, 0.75, 0.5, 0.25]
+
+
+def test_allocate_voices_amp_scale_none_without_contour():
+    note = Note(onset_s=0.0, duration_s=0.1, pitch_hz=440.0, velocity=1.0)
+    assignment = allocate_voices([note], frame_rate_hz=50, n_frames=5)
+    voice = next(v for v in assignment[0] if v is not None)
+    assert voice.amp_scale is None
+
+
+def test_place_bass_resolves_per_frame_amp_scale_from_contour():
+    note = Note(
+        onset_s=0.0, duration_s=0.06, pitch_hz=60.0, velocity=1.0,
+        amp_contour=(1.0, 0.6, 0.2),
+    )
+    voices, _ = place_bass([note], frame_rate_hz=50, n_frames=5)
+    assert [v.amp_scale for v in voices[:3]] == [1.0, 0.6, 0.2]
+
+
