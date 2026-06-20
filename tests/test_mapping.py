@@ -87,6 +87,15 @@ def test_apply_percussion_scales_with_velocity():
     assert loud.finish()[0, 10] > soft.finish()[0, 10]
 
 
+def test_apply_percussion_velocity_scales_in_voltage_domain():
+    # A soft hit must stay audible: voltage-domain scaling lands a velocity-0.4 snare near level
+    # 11 (~0.35 output), not the level 6 a naive level*0.4 would crush it to.
+    soft = RegisterStreamBuilder(4)
+    apply_percussion(soft, [Percussion(0.0, "snare", 0.4)], 50, 4)
+    assert soft.finish()[0, 10] == 11  # scale_amplitude(15, 0.4)
+
+
+
 def test_place_bass_reserves_channel_a_and_picks_the_lowest_note():
     low = Note(onset_s=0.0, duration_s=0.2, pitch_hz=80.0, velocity=0.9)
     high = Note(onset_s=0.0, duration_s=0.2, pitch_hz=160.0, velocity=1.0)

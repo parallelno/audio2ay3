@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ..analysis.model import Percussion
-from ..encode.quantize import seconds_to_frame
+from ..encode.quantize import scale_amplitude, seconds_to_frame
 from ..encode.register_stream import RegisterStreamBuilder
 
 PERCUSSION_CHANNEL = 2  # channel C
@@ -51,4 +51,7 @@ def apply_percussion(
                 continue
             builder.disable_tone(f, channel)  # let the noise read cleanly
             builder.enable_noise(f, channel, recipe.noise_period)
-            builder.set_amplitude(f, channel, int(round(level * scale)))
+            # Scale in the DAC's logarithmic domain. A linear ``level * scale`` crushes soft
+            # hits into near-silence (the 16 levels are log-spaced), which made most detected
+            # drums inaudible; scale_amplitude keeps them prominent at their true loudness.
+            builder.set_amplitude(f, channel, scale_amplitude(level, scale))
