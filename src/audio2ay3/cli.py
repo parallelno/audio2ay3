@@ -99,6 +99,10 @@ def cmd_convert(args: argparse.Namespace) -> int:
 
     ym_writer.write(song, out)
     print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
+    if getattr(args, "explain", False):
+        from .explain import describe_song
+
+        print(describe_song(song))
     return 0
 
 
@@ -119,6 +123,10 @@ def cmd_preview(args: argparse.Namespace) -> int:
         return 3
 
     print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
+    if getattr(args, "explain", False):
+        from .explain import describe_song
+
+        print(describe_song(song))
     return 0
 
 
@@ -139,6 +147,8 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
 def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--no-amp-envelope", action="store_true", dest="no_amp_envelope",
                     help="disable per-note amplitude shaping (flat, constant-volume notes)")
+    sp.add_argument("--explain", action="store_true",
+                    help="print register-level diagnostics for the arranged song")
 
 
 def build_parser() -> argparse.ArgumentParser:
