@@ -24,15 +24,21 @@ _KICK_BAND_HZ = 150.0  # energy below this counts toward the "kick" band
 _KICK_LOW_RATIO = 0.25  # >= this share of energy below _KICK_BAND_HZ -> kick (bass-dominant)
 _SNARE_MAX_HZ = 3000.0  # centroid below -> snare, above -> hi-hat/cymbal
 
-# STFT hop for onset strength / spectral features. ~23 ms at 22.05 kHz — fine for 50 Hz frames.
-_HOP = 512
+# STFT hop for onset strength / spectral features. ~12 ms at 22.05 kHz: a finer hop than the
+# librosa default so closely-spaced hits in a fast roll land on separate envelope frames
+# (still comfortably finer than the 20 ms AY frame the hits are quantised to downstream).
+_HOP = 256
 
-# Onset picking. librosa's default 0.07 contrast threshold (delta) drops the closely-spaced,
-# lower-contrast hits inside fast rolls/series, so they went missing; loosen it modestly. The
-# explicit minimum spacing (wait) keeps it version-stable while still admitting dense series
-# (~20 ms apart) without inviting a flood of phantom onsets.
+# Onset picking. Two things made fast drum *series* go missing:
+#  1. librosa's default 0.07 contrast threshold (delta) drops the lower-contrast hits in a roll;
+#  2. its ~100 ms moving-average windows smear closely-spaced hits into a single peak.
+# We loosen delta modestly and tighten the adaptive-threshold average to ~60 ms and the local-max
+# window to ~20 ms, with a short refractory 'wait' so dense series register without a phantom
+# flood. All windows are expressed in seconds and converted to frames against the active hop.
 _ONSET_DELTA = 0.05
 _ONSET_WAIT_S = 0.02
+_ONSET_AVG_S = 0.06  # moving-average half-window for the adaptive threshold
+_ONSET_MAX_S = 0.02  # local-max half-window for peak detection
 
 # Window (seconds) after each onset over which spectral features are averaged for classification.
 _CLASSIFY_WIN_S = 0.03
@@ -85,13 +91,21 @@ def detect_percussion(
         ) from exc
 
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=_HOP)
+
+    def _win(seconds: float) -> int:
+        return max(1, round(seconds * sr / _HOP))
+
     onset_frames = librosa.onset.onset_detect(
         onset_envelope=onset_env,
         sr=sr,
         hop_length=_HOP,
         backtrack=True,
         delta=_ONSET_DELTA,
-        wait=max(1, round(_ONSET_WAIT_S * sr / _HOP)),
+        wait=_win(_ONSET_WAIT_S),
+        pre_avg=_win(_ONSET_AVG_S),
+        post_avg=_win(_ONSET_AVG_S),
+        pre_max=_win(_ONSET_MAX_S),
+        post_max=_win(_ONSET_MAX_S),
     )
     if len(onset_frames) == 0:
         return []
