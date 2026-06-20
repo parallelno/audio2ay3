@@ -108,11 +108,25 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     )
 
 
-def convert(path: str, cfg: RunConfig) -> YmSong:
-    """Full neural conversion: audio file -> arranged :class:`YmSong`."""
+def convert(
+    path: str, cfg: RunConfig, *, trace: list[Transcription] | None = None
+) -> YmSong:
+    """Full neural conversion: audio file -> arranged :class:`YmSong`.
+
+    When *trace* is given, the pre-arrange :class:`Transcription` is appended to it, so callers
+    (e.g. ``--explain``) can inspect the musical demand without re-running the neural stack.
+    """
+    tr = _build_transcription(path, cfg)
+    if trace is not None:
+        trace.append(tr)
+    return arrange(tr, cfg, name=Path(path).stem)
+
+
+def _build_transcription(path: str, cfg: RunConfig) -> Transcription:
+    """Run the neural front-end into a :class:`Transcription` (everything before ``arrange``)."""
     audio, sr = load_audio(path, cfg.render_sr)
     if cfg.transcription == "mt3":
-        return _convert_mt3(path, audio, sr, cfg)
+        return _build_transcription_mt3(audio, sr, cfg)
     stems = separate_stems(audio, sr, cfg.separation)
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     # Follow each note's real loudness shape from its own stem so held notes sustain and plucks
@@ -135,10 +149,10 @@ def convert(path: str, cfg: RunConfig) -> YmSong:
                 bass_notes, stems.bass, stems.sr, cfg.chip.frame_rate_hz
             )
         tr.bass_notes = bass_notes
-    return arrange(tr, cfg, name=Path(path).stem)
+    return tr
 
 
-def _convert_mt3(path: str, audio: np.ndarray, sr: int, cfg: RunConfig) -> YmSong:
+def _build_transcription_mt3(audio: np.ndarray, sr: int, cfg: RunConfig) -> Transcription:
     """MT3 path: one multitrack pass yields notes, bass, and drums together (no separation).
 
     MT3 emits General-MIDI note events for every instrument at once, so unlike the Basic Pitch
@@ -150,14 +164,21 @@ def _convert_mt3(path: str, audio: np.ndarray, sr: int, cfg: RunConfig) -> YmSon
     if cfg.amp_envelope.enabled:
         tr.notes = attach_amp_contours(tr.notes, audio, sr, cfg.chip.frame_rate_hz)
         tr.bass_notes = attach_amp_contours(tr.bass_notes, audio, sr, cfg.chip.frame_rate_hz)
-    return arrange(tr, cfg, name=Path(path).stem)
+    return tr
 
 
-def preview(path: str, out_path: str, cfg: RunConfig, *, max_seconds: float | None = None) -> YmSong:
+def preview(
+    path: str,
+    out_path: str,
+    cfg: RunConfig,
+    *,
+    max_seconds: float | None = None,
+    trace: list[Transcription] | None = None,
+) -> YmSong:
     """Convert *path* and render the result to audio at *out_path*; returns the song."""
     from .render import Renderer
 
-    song = convert(path, cfg)
+    song = convert(path, cfg, trace=trace)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     Renderer(render_sr=cfg.render_sr, oversample=cfg.oversample).render_to_file(
         song, out_path, bitrate_kbps=cfg.mp3_bitrate_kbps, max_seconds=max_seconds

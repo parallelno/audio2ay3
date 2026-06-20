@@ -129,6 +129,18 @@ python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.y
 > **Version drift:** `t5x`/`jax`/`flax` break across releases. If the install or a run fails on
 > version errors, match the pins in MT3's [upstream colab](https://github.com/magenta/mt3/blob/main/mt3/colab/music_transcription_with_transformers.ipynb).
 
+> **Missing gin configs:** the `mt3` wheel has a packaging bug — its `setup.py` omits the `gin/`
+> subdirectory, so the first run fails with a gin error. audio2ay3 detects this and prints the
+> exact fix; in short, drop the 7 config files into the installed package's `gin/` folder:
+>
+> ```bash
+> MT3_GIN="$(python -c 'import mt3, pathlib; print(pathlib.Path(mt3.__file__).parent / "gin")')"
+> mkdir -p "$MT3_GIN"
+> for f in model.gin mt3.gin ismir2021.gin local_tiny.gin train.gin eval.gin infer.gin; do
+>   curl -sSL -o "$MT3_GIN/$f" "https://raw.githubusercontent.com/magenta/mt3/main/mt3/gin/$f"
+> done
+> ```
+
 ### 3. Verify the install
 
 ```powershell

@@ -84,10 +84,26 @@ def _checkpoint_path() -> str:
 
 
 def _gin_dir() -> str:
-    """Locate the gin configs shipped inside the installed ``mt3`` package."""
+    """Locate the gin configs shipped inside the installed ``mt3`` package.
+
+    The published ``mt3`` wheel has a packaging bug: its ``setup.py`` does not ship the ``gin/``
+    subpackage, so a plain ``pip install`` leaves it absent and model construction fails deep
+    inside gin with an opaque error. Detect that here and tell the user exactly how to repair it.
+    """
     import mt3
 
-    return str(Path(mt3.__file__).resolve().parent / "gin")
+    gin = Path(mt3.__file__).resolve().parent / "gin"
+    if not (gin / "model.gin").exists():
+        raise RuntimeError(
+            "The installed 'mt3' package is missing its gin configs (a known packaging bug: the "
+            f"wheel omits the gin/ directory). Expected them in {gin}. Download the 7 files from "
+            "https://github.com/magenta/mt3/tree/main/mt3/gin into that directory, e.g.:\n"
+            f'  mkdir -p "{gin}" && for f in model.gin mt3.gin ismir2021.gin '
+            "local_tiny.gin train.gin eval.gin infer.gin; do curl -sSL -o "
+            f'"{gin}/$f" '
+            '"https://raw.githubusercontent.com/magenta/mt3/main/mt3/gin/$f"; done'
+        )
+    return str(gin)
 
 
 def _to_mono_16k(audio: np.ndarray, sr: int) -> np.ndarray:

@@ -88,8 +88,10 @@ def cmd_convert(args: argparse.Namespace) -> int:
     out = args.output or _default_out(args.input, ".ym")
     Path(out).parent.mkdir(parents=True, exist_ok=True)
 
+    explain = getattr(args, "explain", False)
+    trace: list | None = [] if explain else None
     try:
-        song = convert(args.input, cfg)
+        song = convert(args.input, cfg, trace=trace)
     except FileNotFoundError:
         print(f"error: file not found: {args.input}", file=sys.stderr)
         return 3
@@ -99,10 +101,14 @@ def cmd_convert(args: argparse.Namespace) -> int:
 
     ym_writer.write(song, out)
     print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
-    if getattr(args, "explain", False):
+    if explain:
         from .explain import describe_song
 
         print(describe_song(song))
+        if trace:
+            from .mapping.contention import describe_contention, voice_contention
+
+            print(describe_contention(voice_contention(trace[0], cfg)))
     return 0
 
 
@@ -113,8 +119,10 @@ def cmd_preview(args: argparse.Namespace) -> int:
     ext = ".wav" if args.wav else ".mp3"
     out = args.output or _default_out(args.input, ext)
 
+    explain = getattr(args, "explain", False)
+    trace: list | None = [] if explain else None
     try:
-        song = preview(args.input, out, cfg, max_seconds=args.duration)
+        song = preview(args.input, out, cfg, max_seconds=args.duration, trace=trace)
     except FileNotFoundError:
         print(f"error: file not found: {args.input}", file=sys.stderr)
         return 3
@@ -123,10 +131,14 @@ def cmd_preview(args: argparse.Namespace) -> int:
         return 3
 
     print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
-    if getattr(args, "explain", False):
+    if explain:
         from .explain import describe_song
 
         print(describe_song(song))
+        if trace:
+            from .mapping.contention import describe_contention, voice_contention
+
+            print(describe_contention(voice_contention(trace[0], cfg)))
     return 0
 
 

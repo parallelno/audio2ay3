@@ -40,6 +40,26 @@ _RECIPES: dict[str, _Recipe] = {
 }
 
 
+def percussion_busy_frames(
+    percussion: list[Percussion], frame_rate_hz: int, n_frames: int
+) -> list[bool]:
+    """Frames on which a drum hit's decay occupies (and overwrites) the percussion channel.
+
+    Each hit steals channel C for the length of its recipe decay, clobbering any melodic note
+    the arranger placed there. This exposes that footprint so the contention diagnostic can count
+    melody lost to drums without re-deriving the (private) recipe decay lengths.
+    """
+    busy = [False] * n_frames
+    for hit in percussion:
+        recipe = _RECIPES.get(hit.kind, _RECIPES["snare"])
+        onset = seconds_to_frame(hit.onset_s, frame_rate_hz)
+        for i in range(len(recipe.decay)):
+            f = onset + i
+            if 0 <= f < n_frames:
+                busy[f] = True
+    return busy
+
+
 def apply_percussion(
     builder: RegisterStreamBuilder,
     percussion: list[Percussion],
