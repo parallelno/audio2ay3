@@ -15,6 +15,14 @@ import numpy as np
 
 from .model import Note, Transcription
 
+# Basic Pitch's defaults target general transcription, not a 50 Hz chip. Its 127.7 ms
+# minimum-note-length silently drops fast passages (a 16th note at 160 BPM is ~94 ms), which is
+# why fast piano runs went missing; we lower it to ~3 AY frames so short notes survive (the chip
+# can't resolve anything briefer anyway). A slightly lower onset threshold also re-splits the
+# fast repeated notes the default merges into one sustained tone.
+_BP_ONSET_THRESHOLD = 0.45
+_BP_MIN_NOTE_MS = 58.0
+
 
 def transcribe(
     audio: np.ndarray, sr: int, mode: str = "basic-pitch", frame_rate_hz: int = 50
@@ -62,7 +70,12 @@ def _transcribe_basic_pitch(audio: np.ndarray, sr: int) -> Transcription:
     with tempfile.TemporaryDirectory() as tmp:
         wav_path = str(Path(tmp) / "in.wav")
         write_wav(wav_path, audio, sr)
-        _, _, note_events = predict(wav_path, model_path)
+        _, _, note_events = predict(
+            wav_path,
+            model_path,
+            onset_threshold=_BP_ONSET_THRESHOLD,
+            minimum_note_length=_BP_MIN_NOTE_MS,
+        )
 
     notes: list[Note] = []
     for event in note_events:

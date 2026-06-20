@@ -27,6 +27,13 @@ _SNARE_MAX_HZ = 3000.0  # centroid below -> snare, above -> hi-hat/cymbal
 # STFT hop for onset strength / spectral features. ~23 ms at 22.05 kHz — fine for 50 Hz frames.
 _HOP = 512
 
+# Onset picking. librosa's default 0.07 contrast threshold (delta) drops the closely-spaced,
+# lower-contrast hits inside fast rolls/series, so they went missing; loosen it modestly. The
+# explicit minimum spacing (wait) keeps it version-stable while still admitting dense series
+# (~20 ms apart) without inviting a flood of phantom onsets.
+_ONSET_DELTA = 0.05
+_ONSET_WAIT_S = 0.02
+
 # Window (seconds) after each onset over which spectral features are averaged for classification.
 _CLASSIFY_WIN_S = 0.03
 
@@ -79,7 +86,12 @@ def detect_percussion(
 
     onset_env = librosa.onset.onset_strength(y=y, sr=sr, hop_length=_HOP)
     onset_frames = librosa.onset.onset_detect(
-        onset_envelope=onset_env, sr=sr, hop_length=_HOP, backtrack=True
+        onset_envelope=onset_env,
+        sr=sr,
+        hop_length=_HOP,
+        backtrack=True,
+        delta=_ONSET_DELTA,
+        wait=max(1, round(_ONSET_WAIT_S * sr / _HOP)),
     )
     if len(onset_frames) == 0:
         return []
