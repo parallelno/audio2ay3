@@ -141,7 +141,15 @@ python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.y
 > done
 > ```
 
-### YourMT3+ transcription (`--transcription yourmt3`) — MT3-class, runs on native Windows
+### YourMT3+ transcription (`--transcription yourmt3`) — experimental, not recommended
+
+> **Status: experimental — not recommended.** In testing it transcribed *more sparsely* than
+> `basic-pitch` on real material (e.g. `Goblins_Lair`: ~55% pitched duty cycle, several multi-second
+> melodic gaps, very staccato notes) and was far slower (tens of minutes on a GPU vs seconds for
+> basic-pitch). The shortfall is in the raw transcription, not the AY arrangement (mean polyphony
+> ~1.9, so the 3 tone channels are not the bottleneck). It is kept as an optional backend for
+> experimentation only; for everyday use prefer **`basic-pitch`** (the native-Windows default), or
+> **MT3** (Linux/WSL) when you want multi-instrument quality.
 
 [YourMT3+](https://github.com/mimbres/YourMT3) (mimbres, MLSP&nbsp;2024) is MT3-class
 multi-instrument transcription rebuilt on a **pure PyTorch** stack — `torch`, `torchaudio`,

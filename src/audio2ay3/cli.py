@@ -165,7 +165,8 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--separation", choices=["demucs", "spleeter", "none"],
                     default="demucs", help="neural source separation backend")
     sp.add_argument("--transcription", choices=["basic-pitch", "mt3", "yourmt3", "onsets-frames"],
-                    default="basic-pitch", help="neural transcription backend")
+                    default="basic-pitch",
+                    help="neural transcription backend (yourmt3 is experimental/not recommended)")
     sp.add_argument("--clock", type=int, default=None, help="master clock (Hz)")
     sp.add_argument("--frame-rate", type=int, default=None, dest="frame_rate",
                     help="replay frame rate (Hz)")
@@ -230,7 +231,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sy = sub.add_parser(
         "setup-yourmt3",
-        help="Fetch the optional YourMT3+ transcription backend (GPL-3.0) into a local cache",
+        help="Fetch the optional (experimental) YourMT3+ transcription backend (GPL-3.0) into a "
+             "local cache",
     )
     sy.add_argument("--dir", default=None,
                     help="checkout directory (default: a per-user cache dir)")

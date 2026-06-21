@@ -109,7 +109,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `input` | — | Input audio (WAV/FLAC/OGG; MP3 if your libsndfile build supports it). |
 | `-o`, `--output` | `build/<name>.ym` | Output `.ym` path. |
 | `--separation` | `demucs` | Source-separation backend. `none` skips separation — use it for already-instrumental input. `spleeter` is recognised but not implemented (raises a clear error). |
-| `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is MT3-class multi-instrument that runs on **native Windows** (pure PyTorch; GPL-3.0 model installed separately — see the README). `onsets-frames` is reserved and raises a clear error. |
+| `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is an **experimental** pure-PyTorch multi-instrument backend that installs on native Windows, but transcribed more sparsely than `basic-pitch` in testing and is slow — not recommended (GPL-3.0 model installed separately; see the README). `onsets-frames` is reserved and raises a clear error. |
 | `--clock HZ` | `1773400` | AY master clock (default ≈ 1.7734 MHz, ZX Spectrum). |
 | `--frame-rate HZ` | `50` | Replay frame rate. |
 | `--chips N` | `1` | Number of AY chips. **Experimental:** accepted and stored, but dual-AY arrangement is not yet implemented, so only the first chip is rendered today. |
@@ -160,6 +160,9 @@ Fetch the optional **YourMT3+** transcription backend (GPL-3.0) into a per-user 
 `--transcription yourmt3` works without manual cloning or env vars. Needs `git` (and `git-lfs` for
 the checkpoints); it does **not** import torch. The GPL model code is fetched onto your machine at
 runtime and is never bundled into this MIT project.
+
+> **Experimental, not recommended.** The `yourmt3` backend transcribed more sparsely than
+> `basic-pitch` in testing and is slow; this helper is kept for experimentation only.
 
 ```
 audio2ay3 setup-yourmt3 [--dir PATH] [--repo-url URL] [--model NAME] [--force]
