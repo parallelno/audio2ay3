@@ -27,9 +27,22 @@ from .encode import (
     scale_amplitude,
     velocity_to_amplitude,
 )
-from .encode.quantize import frames_for_duration
-from .mapping import allocate_voices, apply_percussion, is_sustained_program, place_bass
+from .encode.quantize import TONE_PERIOD_MIN, frames_for_duration
+from .mapping import (
+    allocate_voices,
+    apply_percussion,
+    is_breath_program,
+    is_sustained_program,
+    is_vibrato_program,
+    percussion_busy_frames,
+    place_bass,
+)
 from .ymformat.model import YmSong
+
+# A breathy wind voice gets a short noise "chiff" at each note's attack: bright air for the first
+# couple of frames, then a clean tone. It yields to drums, which own the shared noise generator.
+_BREATH_NOISE_PERIOD = 4  # small period -> high-frequency air hiss
+_BREATH_ATTACK_FRAMES = 2
 
 
 def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
@@ -49,7 +62,9 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     builder = RegisterStreamBuilder(n_frames)
     # Bass owns a dedicated channel; the melodic allocator fills the channels left free.
     bass_voices, reserved = place_bass(tr.bass_notes, frame_rate, n_frames)
-    assignment = allocate_voices(tr.notes, frame_rate, n_frames, reserved=reserved)
+    assignment = allocate_voices(
+        tr.notes, frame_rate, n_frames, reserved=reserved, arpeggiate=cfg.arpeggio
+    )
     for f in range(n_frames):
         ch = reserved[f]
         if ch is not None:
@@ -59,6 +74,9 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     # (amp_scale), follow it so the note keeps the original's character; otherwise fall back to
     # the synthetic envelope. Both are gated by amp_envelope.enabled (off -> flat amplitude).
     env = cfg.amp_envelope
+    vib = cfg.vibrato
+    # Frames a drum decay owns the shared noise generator, so a breath chiff defers to it.
+    drum_busy = percussion_busy_frames(tr.percussion, frame_rate, n_frames)
     cur_note: list[int | None] = [None, None, None]
     age = [0, 0, 0]
     for f in range(n_frames):
@@ -75,6 +93,15 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             tone_period = quantize_tone(voice.pitch_hz, clock)
             if tone_period <= 0:
                 continue
+            # Vibrato: a small pitch LFO on idiomatically-expressive instruments (flute/strings/
+            # reed/organ/synth lead) makes a bare square read as a living tone. Period is the
+            # inverse of frequency, so a sharp-by-c-cents frame divides the period accordingly.
+            if vib.enabled and is_vibrato_program(voice.program):
+                cents = vib.cents(age[ch], frame_rate)
+                if cents:
+                    tone_period = max(
+                        TONE_PERIOD_MIN, round(tone_period / (2.0 ** (cents / 1200.0)))
+                    )
             # The allocator already decided this voice should sound; never let velocity
             # rounding silence it — floor a placed note to the quietest audible amplitude.
             peak = max(1, velocity_to_amplitude(voice.velocity))
@@ -104,6 +131,14 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             else:
                 level = env.level(age[ch], peak)
             builder.set_tone(f, ch, tone_period, level)
+            # Breath: a short noise chiff at the attack of flute/pipe/reed voices imitates the
+            # instrument's air, but only when no drum is using the shared noise generator.
+            if (
+                is_breath_program(voice.program)
+                and age[ch] < _BREATH_ATTACK_FRAMES
+                and not drum_busy[f]
+            ):
+                builder.enable_noise(f, ch, _BREATH_NOISE_PERIOD)
 
     apply_percussion(builder, tr.percussion, frame_rate, n_frames)
 

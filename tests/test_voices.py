@@ -13,7 +13,9 @@ from audio2ay3.mapping.voices import (
     _program_rank,
     _Span,
     allocate_voices,
+    is_breath_program,
     is_sustained_program,
+    is_vibrato_program,
 )
 
 
@@ -71,3 +73,41 @@ def test_is_sustained_program_classifies_held_vs_struck_families():
     assert not is_sustained_program(24)  # Guitar -> plucked
     assert not is_sustained_program(34)  # Electric bass -> struck
     assert not is_sustained_program(None)  # Basic Pitch / unknown -> struck (unchanged)
+
+
+def test_is_vibrato_and_breath_program_families():
+    # Vibrato: organ, strings, reeds, pipe/flute, synth lead — brass and pads stay steady.
+    assert is_vibrato_program(16)  # Organ
+    assert is_vibrato_program(40)  # Violin / strings
+    assert is_vibrato_program(66)  # Tenor sax (reed)
+    assert is_vibrato_program(73)  # Flute (pipe)
+    assert is_vibrato_program(81)  # Synth lead
+    assert not is_vibrato_program(56)  # Trumpet (brass) -> left steady
+    assert not is_vibrato_program(89)  # Synth pad -> left steady
+    assert not is_vibrato_program(0)  # Piano
+    assert not is_vibrato_program(None)
+    # Breath chiff: only the wind families (reed + pipe).
+    assert is_breath_program(64)  # Soprano sax
+    assert is_breath_program(73)  # Flute
+    assert is_breath_program(75)  # Pan flute
+    assert not is_breath_program(40)  # Bowed strings -> no breath
+    assert not is_breath_program(16)  # Organ
+    assert not is_breath_program(None)
+
+
+def test_arpeggiate_cycles_overflow_instead_of_dropping():
+    # Four notes, three channels: with arpeggio on, the lowest-priority channel cycles the
+    # overflow so every chord tone is heard in turn; without it the quietest note is silenced.
+    notes = [
+        Note(0.0, 0.2, 400.0, 1.0),
+        Note(0.0, 0.2, 500.0, 0.9),
+        Note(0.0, 0.2, 600.0, 0.8),
+        Note(0.0, 0.2, 700.0, 0.7),
+    ]
+    arp = allocate_voices(notes, 50, 10, arpeggiate=True)
+    heard = {round(v.pitch_hz) for frame in arp for v in frame if v is not None}
+    assert heard == {400, 500, 600, 700}  # every chord tone is heard in turn
+
+    plain = allocate_voices(notes, 50, 10)
+    plain_heard = {round(v.pitch_hz) for frame in plain for v in frame if v is not None}
+    assert 700 not in plain_heard  # without arpeggio the lowest-priority note is dropped

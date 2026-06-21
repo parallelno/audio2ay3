@@ -113,6 +113,27 @@ def is_sustained_program(program: int | None) -> bool:
     return program is not None and program in _SUSTAINED_PROGRAMS
 
 
+# Instruments that idiomatically vibrato — Organ (16-23), Strings (40-47), Reed/sax (64-71),
+# Pipe/flute (72-79), Synth Lead (80-87). A few cents of pitch LFO makes a bare square read as a
+# living tone; brass/pads/ensembles are intentionally left steady.
+_VIBRATO_PROGRAMS = frozenset(
+    set(range(16, 24)) | set(range(40, 48)) | set(range(64, 88))
+)
+# Breathy wind instruments — Reed (64-71) + Pipe/flute (72-79) — get a short noise "chiff" at the
+# attack to imitate their air.
+_BREATH_PROGRAMS = frozenset(range(64, 80))
+
+
+def is_vibrato_program(program: int | None) -> bool:
+    """Whether a GM *program* should get an idiomatic pitch vibrato."""
+    return program is not None and program in _VIBRATO_PROGRAMS
+
+
+def is_breath_program(program: int | None) -> bool:
+    """Whether a GM *program* should get a breathy noise chiff at each note's attack."""
+    return program is not None and program in _BREATH_PROGRAMS
+
+
 def _spans_from_notes(
     notes: list[Note], frame_rate_hz: int, n_frames: int
 ) -> list[_Span]:
@@ -188,12 +209,18 @@ def allocate_voices(
     frame_rate_hz: int,
     n_frames: int,
     reserved: list[int | None] | None = None,
+    *,
+    arpeggiate: bool = False,
 ) -> list[list[Voice | None]]:
     """Return ``assignment[frame][channel]`` of :class:`Voice` or ``None`` (silent).
 
     When *reserved* is given, ``reserved[f]`` names a channel that is off-limits to melodic
     notes in frame *f* (because :func:`place_bass` owns it that frame); the remaining channels
     absorb the melody, so a sustained lead still keeps its continuity on the channels it can use.
+
+    When *arpeggiate* is set, notes that would otherwise be dropped because every channel is busy
+    are folded into a fast cycle on the lowest-priority channel (the classic chiptune arpeggio),
+    so squeezed chord tones are heard in turn rather than silenced.
     """
     active_by_frame = _bucket_by_frame(
         _spans_from_notes(notes, frame_rate_hz, n_frames), n_frames
@@ -231,6 +258,26 @@ def allocate_voices(
             current[ch] = Voice(
                 s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program
             )
+            taken.add(s.note_id)
+
+        # 3) Arpeggio: any active note still unplaced would be dropped for lack of a channel.
+        #    Instead, fold it (and its host channel's note) into a one-per-frame cycle on the
+        #    lowest-priority usable channel, so every squeezed chord tone is heard in turn.
+        if arpeggiate:
+            overflow = [s for s in active if s.note_id not in taken]
+            occupied = [ch for ch in usable if current[ch] is not None]
+            if overflow and occupied:
+                # Lowest priority = the largest _priority tuple (priority sorts ascending).
+                arp_ch = max(
+                    occupied, key=lambda ch: _priority(by_id[current[ch].note_id])
+                )
+                group = sorted(
+                    [by_id[current[arp_ch].note_id], *overflow], key=lambda sp: sp.pitch_hz
+                )
+                s = group[f % len(group)]
+                current[arp_ch] = Voice(
+                    s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program
+                )
 
         assignment[f] = current
         prev_ids = [v.note_id if v is not None else None for v in current]

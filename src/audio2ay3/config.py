@@ -6,6 +6,7 @@ classical-DSP note-detection path.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -80,6 +81,32 @@ class AmpEnvelope:
 
 
 @dataclass(frozen=True)
+class Vibrato:
+    """Idiomatic pitch vibrato for sustained, expressive instruments.
+
+    MT3 gives no expression data, so we *synthesise* a small pitch LFO from the instrument
+    identity: flutes, strings, reeds, organs and synth leads idiomatically vibrato, and a few
+    cents of wobble is what makes a bare AY square read as a living tone instead of a dead
+    oscillator. The wobble ramps in after the attack so onsets stay clean and in tune.
+    """
+
+    enabled: bool = True
+    rate_hz: float = 6.0  # LFO frequency (musical vibrato sits ~5-7 Hz)
+    depth_cents: float = 22.0  # peak pitch deviation either side of the note
+    onset_delay_frames: int = 3  # hold a clean, in-tune attack before the wobble starts
+    ramp_frames: int = 5  # frames to grow the depth from 0 to full after the delay
+
+    def cents(self, age_frames: int, frame_rate_hz: int) -> float:
+        """Signed pitch offset (in cents) for a note *age_frames* into its life."""
+        if not self.enabled or age_frames < self.onset_delay_frames or frame_rate_hz <= 0:
+            return 0.0
+        grown = age_frames - self.onset_delay_frames
+        ramp = 1.0 if self.ramp_frames <= 0 else min(1.0, (grown + 1) / self.ramp_frames)
+        phase = 2.0 * math.pi * self.rate_hz * age_frames / frame_rate_hz
+        return self.depth_cents * ramp * math.sin(phase)
+
+
+@dataclass(frozen=True)
 class RunConfig:
     """End-to-end run configuration."""
 
@@ -94,3 +121,7 @@ class RunConfig:
     mp3_bitrate_kbps: int = 192
     seed: int = 0
     amp_envelope: AmpEnvelope = field(default_factory=AmpEnvelope)
+    vibrato: Vibrato = field(default_factory=Vibrato)
+    # Cycle squeezed chord tones on one channel instead of dropping them when more notes sound
+    # at once than there are free tone channels (the classic chiptune "arpeggio chord").
+    arpeggio: bool = True
