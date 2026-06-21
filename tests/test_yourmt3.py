@@ -15,7 +15,12 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from audio2ay3.analysis._yourmt3_infer import _pretty_midi_to_note_sequence
+from audio2ay3.analysis._yourmt3_infer import (
+    _DEFAULT_MODEL,
+    _MODEL_PRESETS,
+    _pretty_midi_to_note_sequence,
+    _resolve_model_name,
+)
 from audio2ay3.analysis.transcribe import note_sequence_to_transcription, transcribe
 from audio2ay3.analysis.yourmt3_setup import setup_yourmt3
 
@@ -136,6 +141,60 @@ def test_setup_yourmt3_skips_clone_when_already_present(tmp_path):
 def test_setup_yourmt3_unknown_model_rejected(tmp_path):
     with pytest.raises(ValueError, match="unknown model variant"):
         setup_yourmt3(target_dir=tmp_path, model_name="nope", runner=_FakeRunner(), log=lambda _: None)
+
+
+def test_resolve_model_name_precedence(monkeypatch):
+    monkeypatch.delenv("AUDIO2AY3_YOURMT3_MODEL", raising=False)
+    # Nothing set -> backend default.
+    assert _resolve_model_name(None) == _DEFAULT_MODEL
+    # An explicit name (e.g. from --yourmt3-model) is honoured.
+    assert _resolve_model_name("YMT3+") == "YMT3+"
+    # The env var is used when no explicit name is given...
+    monkeypatch.setenv("AUDIO2AY3_YOURMT3_MODEL", "YMT3+")
+    assert _resolve_model_name(None) == "YMT3+"
+    # ...but an explicit name wins over the env var.
+    assert _resolve_model_name("YPTF.MoE+Multi (PS)") == "YPTF.MoE+Multi (PS)"
+
+
+def test_resolve_model_name_rejects_unknown(monkeypatch):
+    monkeypatch.delenv("AUDIO2AY3_YOURMT3_MODEL", raising=False)
+    with pytest.raises(RuntimeError, match="not a known YourMT3 variant"):
+        _resolve_model_name("Bogus Variant")
+
+
+def test_cli_model_choices_match_presets():
+    from audio2ay3.cli import _YOURMT3_MODELS
+
+    assert set(_YOURMT3_MODELS) == set(_MODEL_PRESETS)
+
+
+def test_yourmt3_model_flag_threads_into_run_config():
+    from audio2ay3.cli import _build_run_config, build_parser
+
+    args = build_parser().parse_args(
+        ["convert", "in.wav", "--transcription", "yourmt3", "--yourmt3-model", "YMT3+"]
+    )
+    cfg = _build_run_config(args)
+    assert cfg.yourmt3_model == "YMT3+"
+    # Default (flag omitted) leaves the backend to resolve env var / default.
+    default_cfg = _build_run_config(build_parser().parse_args(["convert", "in.wav"]))
+    assert default_cfg.yourmt3_model is None
+
+
+def test_yourmt3_model_flows_to_inference(monkeypatch):
+    seen = {}
+
+    def fake_transcribe_yourmt3(audio, sr, model_name=None):
+        seen["model_name"] = model_name
+        return _pretty_midi_to_note_sequence(
+            _pretty_midi([_pm_instrument(0, [_pm_note(60, 0.0, 0.5)])])
+        )
+
+    monkeypatch.setattr(
+        "audio2ay3.analysis._yourmt3_infer.transcribe_yourmt3", fake_transcribe_yourmt3
+    )
+    transcribe(np.zeros(16, dtype=np.float32), 16000, "yourmt3", yourmt3_model="YMT3+")
+    assert seen["model_name"] == "YMT3+"
 
 
 def test_setup_yourmt3_requires_git(tmp_path):

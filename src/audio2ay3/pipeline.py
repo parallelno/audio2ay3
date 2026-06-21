@@ -246,7 +246,9 @@ def _build_transcription_multitrack(audio: np.ndarray, sr: int, cfg: RunConfig) 
     percussion and the GM bass family to ``bass_notes``. Loudness contours therefore follow the
     full mix (the only signal available), still gated by ``--no-amp-envelope``.
     """
-    tr = transcribe(audio, sr, cfg.transcription, cfg.chip.frame_rate_hz)
+    tr = transcribe(
+        audio, sr, cfg.transcription, cfg.chip.frame_rate_hz, yourmt3_model=cfg.yourmt3_model
+    )
     if cfg.amp_envelope.enabled:
         tr.notes = attach_amp_contours(tr.notes, audio, sr, cfg.chip.frame_rate_hz)
         tr.bass_notes = attach_amp_contours(tr.bass_notes, audio, sr, cfg.chip.frame_rate_hz)

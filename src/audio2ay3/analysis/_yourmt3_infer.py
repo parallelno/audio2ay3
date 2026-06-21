@@ -24,7 +24,7 @@ Setup (see the ``[yourmt3]`` extra for the pip-installable runtime deps):
     # download a checkpoint into the repo per its README / colab, then point us at both:
     setx AUDIO2AY3_YOURMT3_DIR        C:\\path\\to\\YourMT3
     setx AUDIO2AY3_YOURMT3_CHECKPOINT  some_checkpoint@last.ckpt   # optional; preset has a default
-    setx AUDIO2AY3_YOURMT3_MODEL      "YPTF.MoE+Multi (noPS)"      # optional; this is the default
+    setx AUDIO2AY3_YOURMT3_MODEL      "YMT3+"                      # optional; this is the default
 
 The output is parsed with ``pretty_midi`` into a duck-typed ``NoteSequence`` shim;
 :func:`audio2ay3.analysis.transcribe.note_sequence_to_transcription` turns it into the neutral IR.
@@ -45,8 +45,10 @@ _MODEL_ENV = "AUDIO2AY3_YOURMT3_MODEL"
 
 # YourMT3 organises checkpoints under a project id; "2024" matches the released MLSP'24 models.
 _PROJECT = "2024"
-# Recommended default per the upstream demo: the Perceiver-TF MoE multi-channel decoder.
-_DEFAULT_MODEL = "YPTF.MoE+Multi (noPS)"
+# Default variant: the MT3-lineage model with a GM-extended vocabulary (``gm_ext``) and no
+# pitch-shift augmentation (``nops``). It is lighter/faster than the Perceiver-TF MoE decoders and
+# transcribed notably better on our test material (the heavy MoE variants came out sparse).
+_DEFAULT_MODEL = "YMT3+"
 
 # Architecture flags + default checkpoint per model variant, transcribed from the upstream demo's
 # ``app.py``. These are invocation parameters (CLI-style flags) for the user's own YourMT3 install,
@@ -93,19 +95,33 @@ def default_yourmt3_dir() -> Path:
     return Path(base) / "audio2ay3" / "yourmt3"
 
 
-def transcribe_yourmt3(audio: np.ndarray, sr: int):
+def _resolve_model_name(explicit: str | None = None) -> str:
+    """Resolve the YourMT3 variant to use, validating it against :data:`_MODEL_PRESETS`.
+
+    Precedence: an *explicit* name (e.g. from ``--yourmt3-model``) wins, then the
+    ``AUDIO2AY3_YOURMT3_MODEL`` env var, then :data:`_DEFAULT_MODEL`. Raises ``RuntimeError`` naming
+    the valid variants when the resolved name is unknown.
+    """
+    name = (explicit or "").strip() or os.environ.get(_MODEL_ENV, "").strip() or _DEFAULT_MODEL
+    if name not in _MODEL_PRESETS:
+        raise RuntimeError(
+            f"{name!r} is not a known YourMT3 variant; choose one of: "
+            + ", ".join(sorted(_MODEL_PRESETS))
+        )
+    return name
+
+
+def transcribe_yourmt3(audio: np.ndarray, sr: int, model_name: str | None = None):
     """Transcribe mono ``audio`` (sample rate ``sr``) with YourMT3+, returning a NoteSequence shim.
+
+    ``model_name`` selects the variant (e.g. ``"YMT3+"``); when ``None`` it falls back to the
+    ``AUDIO2AY3_YOURMT3_MODEL`` env var and then :data:`_DEFAULT_MODEL`.
 
     Raises ``RuntimeError`` with actionable guidance when the repo checkout, the optional pip stack,
     or a checkpoint is unavailable — rather than surfacing a raw ImportError from deep in the model.
     """
     repo_dir = _repo_dir()
-    model_name = os.environ.get(_MODEL_ENV, "").strip() or _DEFAULT_MODEL
-    if model_name not in _MODEL_PRESETS:
-        raise RuntimeError(
-            f"{_MODEL_ENV}={model_name!r} is not a known YourMT3 variant; choose one of: "
-            + ", ".join(sorted(_MODEL_PRESETS))
-        )
+    model_name = _resolve_model_name(model_name)
     checkpoint = os.environ.get(_CHECKPOINT_ENV, "").strip()
     model = _get_model(repo_dir, model_name, checkpoint)
     midi_path = _run_transcribe(model, repo_dir, audio, sr)

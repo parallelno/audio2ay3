@@ -182,7 +182,9 @@ python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.
 `setup-yourmt3` clones the YourMT3 **HuggingFace Space** (which colocates `model_helper.py` + `amt/`
 and carries the LFS checkpoints) into a per-user cache dir, verifies the layout, and tells you if a
 checkpoint still needs downloading. Flags: `--dir`, `--repo-url`, `--model` (default
-`YPTF.MoE+Multi (noPS)`), `--force`. It only needs `git`/`git-lfs` — no torch.
+`YPTF.MoE+Multi (noPS)`; `YMT3+` did best in testing), `--force`. It only needs `git`/`git-lfs` —
+no torch. Select a variant at convert time with `--yourmt3-model` or the `AUDIO2AY3_YOURMT3_MODEL`
+env var.
 
 <details><summary>Manual setup (alternative to <code>setup-yourmt3</code>)</summary>
 
@@ -192,7 +194,7 @@ git clone https://huggingface.co/spaces/mimbres/YourMT3
 # Download a checkpoint into the checkout per its README/colab, then point us at both:
 setx AUDIO2AY3_YOURMT3_DIR        "C:\path\to\YourMT3"
 setx AUDIO2AY3_YOURMT3_CHECKPOINT "mc13_256_g4_all_v7_mt3f_sqr_rms_moe_wf4_n8k2_silu_rope_rp_b36_nops@last.ckpt"
-setx AUDIO2AY3_YOURMT3_MODEL      "YPTF.MoE+Multi (noPS)"   # optional; this is the default variant
+setx AUDIO2AY3_YOURMT3_MODEL      "YMT3+"   # optional; "YMT3+" did best in testing (default is the MoE variant)
 
 python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3
 ```

@@ -141,15 +141,16 @@ python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.y
 > done
 > ```
 
-### YourMT3+ transcription (`--transcription yourmt3`) — experimental, not recommended
+### YourMT3+ transcription (`--transcription yourmt3`) — experimental, opt-in
 
-> **Status: experimental — not recommended.** In testing it transcribed *more sparsely* than
-> `basic-pitch` on real material (e.g. `Goblins_Lair`: ~55% pitched duty cycle, several multi-second
-> melodic gaps, very staccato notes) and was far slower (tens of minutes on a GPU vs seconds for
-> basic-pitch). The shortfall is in the raw transcription, not the AY arrangement (mean polyphony
-> ~1.9, so the 3 tone channels are not the bottleneck). It is kept as an optional backend for
-> experimentation only; for everyday use prefer **`basic-pitch`** (the native-Windows default), or
-> **MT3** (Linux/WSL) when you want multi-instrument quality.
+> **Status: experimental — opt-in.** Its *default* variant (`YPTF.MoE+Multi (noPS)`) transcribed
+> *more sparsely* than `basic-pitch` on real material (e.g. `Goblins_Lair`: ~55% pitched duty
+> cycle, several multi-second melodic gaps) and was slow. But the lighter **`YMT3+`** variant did
+> notably better in testing — it recovered melodic notes the MoE variants (and basic-pitch) missed,
+> and ran faster. Select a variant with `--yourmt3-model` (e.g. `--yourmt3-model "YMT3+"`); the
+> default stays the MoE checkpoint for backwards compatibility. For everyday use `basic-pitch` (the
+> native-Windows default) is still the safe choice, with **MT3** (Linux/WSL) for multi-instrument
+> quality, but `YMT3+` is worth a try when notes are missing.
 
 [YourMT3+](https://github.com/mimbres/YourMT3) (mimbres, MLSP&nbsp;2024) is MT3-class
 multi-instrument transcription rebuilt on a **pure PyTorch** stack — `torch`, `torchaudio`,
@@ -171,16 +172,17 @@ test suite.
 pip install -e ".[yourmt3]"                       # torch/torchaudio/lightning/transformers/...
 
 # Easy path: clone + wire up the GPL backend into a per-user cache (needs git + git-lfs):
-python -m audio2ay3 setup-yourmt3
-# ...then just run it (no env vars needed — the cache dir is auto-detected):
-python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3
+python -m audio2ay3 setup-yourmt3 --model "YMT3+"
+# ...then just run it (no env vars needed — the cache dir is auto-detected). YMT3+ did best in testing:
+python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3 --yourmt3-model "YMT3+"
 ```
 
 `setup-yourmt3` clones the YourMT3 **HuggingFace Space** (it colocates `model_helper.py` + `amt/`
 and carries the LFS checkpoints) into a per-user cache, verifies the layout, and reports if a
 checkpoint still needs downloading. Flags: `--dir` (checkout location), `--repo-url` (mirror/fork),
 `--model` (variant to verify, default `YPTF.MoE+Multi (noPS)`), `--force` (`git pull` an existing
-checkout). It only needs `git`/`git-lfs` — no torch.
+checkout). It only needs `git`/`git-lfs` — no torch. To select a variant at convert time use
+`--yourmt3-model` (e.g. `--yourmt3-model "YMT3+"`) or the `AUDIO2AY3_YOURMT3_MODEL` env var.
 
 <details><summary>Manual setup (alternative to <code>setup-yourmt3</code>)</summary>
 
@@ -190,8 +192,8 @@ git clone https://huggingface.co/spaces/mimbres/YourMT3
 # Download a checkpoint into the checkout per its README / colab, then point us at both:
 setx AUDIO2AY3_YOURMT3_DIR        "C:\path\to\YourMT3"
 setx AUDIO2AY3_YOURMT3_CHECKPOINT "mc13_256_g4_all_v7_mt3f_sqr_rms_moe_wf4_n8k2_silu_rope_rp_b36_nops@last.ckpt"
-# Optional: pick a variant (default is the recommended "YPTF.MoE+Multi (noPS)"):
-setx AUDIO2AY3_YOURMT3_MODEL      "YPTF.MoE+Multi (noPS)"
+# Optional: pick a variant (default is "YPTF.MoE+Multi (noPS)"; "YMT3+" did best in testing):
+setx AUDIO2AY3_YOURMT3_MODEL      "YMT3+"
 
 python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3
 ```

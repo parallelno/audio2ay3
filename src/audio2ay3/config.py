@@ -123,6 +123,8 @@ class RunConfig:
     # Neural analysis stack (no DSP option by design):
     separation: Literal["demucs", "demucs-ft", "demucs6", "spleeter", "none"] = "demucs"
     transcription: Literal["basic-pitch", "mt3", "yourmt3", "onsets-frames"] = "basic-pitch"
+    # YourMT3 variant for ``transcription == "yourmt3"`` (None = env var / backend default).
+    yourmt3_model: str | None = None
     render_sr: int = 44_100
     oversample: int = 2
     mp3_bitrate_kbps: int = 192

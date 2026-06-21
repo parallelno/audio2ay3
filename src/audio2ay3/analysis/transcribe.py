@@ -33,15 +33,24 @@ _BP_MIN_NOTE_MS = 58.0
 
 
 def transcribe(
-    audio: np.ndarray, sr: int, mode: str = "basic-pitch", frame_rate_hz: int = 50
+    audio: np.ndarray,
+    sr: int,
+    mode: str = "basic-pitch",
+    frame_rate_hz: int = 50,
+    *,
+    yourmt3_model: str | None = None,
 ) -> Transcription:
-    """Transcribe a mono signal into notes using the selected neural backend."""
+    """Transcribe a mono signal into notes using the selected neural backend.
+
+    ``yourmt3_model`` selects the YourMT3 variant for ``mode == "yourmt3"`` (ignored otherwise);
+    ``None`` falls back to the ``AUDIO2AY3_YOURMT3_MODEL`` env var and then the backend default.
+    """
     if mode == "basic-pitch":
         return _transcribe_basic_pitch(audio, sr)
     if mode == "mt3":
         return _transcribe_mt3(audio, sr, frame_rate_hz)
     if mode == "yourmt3":
-        return _transcribe_yourmt3(audio, sr, frame_rate_hz)
+        return _transcribe_yourmt3(audio, sr, frame_rate_hz, yourmt3_model)
     if mode == "onsets-frames":
         raise NotImplementedError(
             "The 'onsets-frames' backend is planned for the deeper-analysis phase; "
@@ -187,7 +196,9 @@ def _transcribe_mt3(audio: np.ndarray, sr: int, frame_rate_hz: int) -> Transcrip
     return note_sequence_to_transcription(ns, frame_rate_hz)
 
 
-def _transcribe_yourmt3(audio: np.ndarray, sr: int, frame_rate_hz: int) -> Transcription:
+def _transcribe_yourmt3(
+    audio: np.ndarray, sr: int, frame_rate_hz: int, model_name: str | None = None
+) -> Transcription:
     """Run YourMT3+ multitrack transcription and route its NoteSequence into the IR.
 
     The pure-PyTorch YourMT3 stack and its inference glue live in :mod:`._yourmt3_infer`; it raises
@@ -197,5 +208,5 @@ def _transcribe_yourmt3(audio: np.ndarray, sr: int, frame_rate_hz: int) -> Trans
     """
     from . import _yourmt3_infer
 
-    ns = _yourmt3_infer.transcribe_yourmt3(audio, sr)
+    ns = _yourmt3_infer.transcribe_yourmt3(audio, sr, model_name)
     return note_sequence_to_transcription(ns, frame_rate_hz)

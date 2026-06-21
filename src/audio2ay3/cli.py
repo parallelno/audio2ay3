@@ -16,6 +16,15 @@ from pathlib import Path
 
 from .config import ChipConfig, RunConfig
 
+# Selectable YourMT3 variants (kept in sync with analysis._yourmt3_infer._MODEL_PRESETS; a test
+# asserts they match). Hardcoded here so building the parser never imports the heavy analysis stack.
+_YOURMT3_MODELS = (
+    "YPTF.MoE+Multi (noPS)",
+    "YPTF.MoE+Multi (PS)",
+    "YPTF+Multi (PS)",
+    "YMT3+",
+)
+
 
 def _default_out(inp: str, ext: str) -> str:
     return str(Path("build") / (Path(inp).stem + ext))
@@ -56,6 +65,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         use_gpu=not getattr(args, "no_gpu", False),
         separation=args.separation,
         transcription=args.transcription,
+        yourmt3_model=getattr(args, "yourmt3_model", None),
         render_sr=getattr(args, "sr", 44_100),
         oversample=getattr(args, "oversample", 2),
         mp3_bitrate_kbps=getattr(args, "bitrate", 192),
@@ -197,7 +207,12 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
                          "demucs6 = 6-stem, experimental)")
     sp.add_argument("--transcription", choices=["basic-pitch", "mt3", "yourmt3", "onsets-frames"],
                     default="basic-pitch",
-                    help="neural transcription backend (yourmt3 is experimental/not recommended)")
+                    help="neural transcription backend (yourmt3 is optional/opt-in; pick its "
+                         "variant with --yourmt3-model)")
+    sp.add_argument("--yourmt3-model", dest="yourmt3_model", choices=list(_YOURMT3_MODELS),
+                    default=None,
+                    help="YourMT3 variant for --transcription yourmt3 (default: backend default / "
+                         "AUDIO2AY3_YOURMT3_MODEL; 'YMT3+' did best in testing)")
     sp.add_argument("--clock", type=int, default=None, help="master clock (Hz)")
     sp.add_argument("--frame-rate", type=int, default=None, dest="frame_rate",
                     help="replay frame rate (Hz)")
@@ -273,8 +288,8 @@ def build_parser() -> argparse.ArgumentParser:
                     help="checkout directory (default: a per-user cache dir)")
     sy.add_argument("--repo-url", dest="repo_url", default=None,
                     help="clone URL (default: the YourMT3 HuggingFace Space)")
-    sy.add_argument("--model", default="YPTF.MoE+Multi (noPS)",
-                    help="model variant to verify a checkpoint for")
+    sy.add_argument("--model", default="YPTF.MoE+Multi (noPS)", choices=list(_YOURMT3_MODELS),
+                    help="model variant to verify a checkpoint for ('YMT3+' did best in testing)")
     sy.add_argument("--force", action="store_true",
                     help="update an existing checkout (git pull) instead of skipping")
     sy.set_defaults(func=cmd_setup_yourmt3)
