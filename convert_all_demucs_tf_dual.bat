@@ -1,30 +1,21 @@
 @echo off
 setlocal
 
+REM Dual-AY conversion of every long sample with the *fine-tuned* Demucs separator
+REM (--separation demucs-ft) + the default basic-pitch transcriber.
+REM Produces, per song, in results\demucs-ft_dual\ :
+REM   <name>.ym  + <name>.ay2.ym   (chip 0 / chip 1)   and   <name>.mp3 (mixed preview)
+REM
+REM Uses the one-pass driver so the .mp3 mixes BOTH chips. The old convert + `validate`
+REM approach was broken for dual-AY: `validate <name>.ym` renders only chip 0, so the .mp3
+REM dropped chip 1's voices. The driver renders the mixed .mp3 from the in-memory dual-chip
+REM song right after writing the two .ym files -- one neural pass, correct mix.
+
 set PY=C:\Users\parallelno\AppData\Local\Programs\Python\Python312\python.exe
-set OUT=results\demucs-ft_dual
 
-if not exist %OUT% mkdir %OUT%
-
-for %%F in (
-    Dungeon_Ore
-    Goblins_Lair
-    Pixel_Hearthbeat
-    The_Dragons_Lair
-    The_Forgotten_Sanctum
-    The_Last_Pixel
-) do (
-    echo.
-    echo === %%F ===
-    "%PY%" -m audio2ay3 convert samples\long\%%F.mp3 -o %OUT%\%%F.ym --separation demucs-ft --chips 2
-    if errorlevel 1 ( echo FAILED: convert %%F & goto :eof )
-
-    "%PY%" -m audio2ay3 validate %OUT%\%%F.ym -o %OUT%\%%F.mp3
-    if errorlevel 1 ( echo FAILED: validate %%F & goto :eof )
-
-    echo ok: %%F.ym + %%F.mp3
-)
+"%PY%" scripts\convert_long_dual.py --separation demucs-ft --out-dir results\demucs-ft_dual %*
+if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
 
 echo.
-echo All done.
+echo All done -^> results\demucs-ft_dual\
 endlocal

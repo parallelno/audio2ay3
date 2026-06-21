@@ -1,28 +1,31 @@
 #!/usr/bin/env python
-"""Batch-convert every long sample with YourMT3 (``YMT3+`` variant) in dual-AY mode.
+"""Batch **dual-AY** conversion of the long samples: ``.ym`` (+ ``.ay2.ym``) + a mixed ``.mp3``.
 
-Each song is run through **one** YourMT3 inference that yields BOTH:
+One pipeline run per song produces BOTH:
 
-  * the ``.ym`` register dumps -- chip 0 -> ``<name>.ym``, chip 1 -> ``<name>.ay2.ym``
-    (``--chips 2`` writes one single-chip file per AY), and
-  * a mixed ``.mp3`` preview -- both chips summed, rendered from the same in-memory
-    dual-chip song (no second inference).
+  * the two single-chip ``.ym`` register dumps -- chip 0 -> ``<name>.ym``, chip 1 ->
+    ``<name>.ay2.ym`` (``--chips 2`` writes one single-chip file per AY), and
+  * a mixed ``.mp3`` -- both chips summed, rendered from the same in-memory dual-chip song.
 
-Outputs land in ``results/ymt3plus_dual/`` by default.
+Why a custom driver instead of the ``convert`` + ``validate`` pattern the single-chip
+``convert_all*.bat`` scripts use: ``validate <name>.ym`` renders only **chip 0**, so for a
+dual-AY song its ``.mp3`` would be missing chip 1. ``preview`` would mix both chips but re-runs
+the (expensive) neural front-end a second time. This driver renders the in-memory ``n_chips=2``
+song straight to ``.mp3`` right after writing the ``.ym`` files -- one neural pass, correct mix.
 
-Why a custom driver instead of ``convert`` + ``preview``: ``preview`` would re-run the
-(expensive) YourMT3 inference a second time, and ``validate`` on ``<name>.ym`` would render
-only chip 0 -- so neither CLI combo gives both ``.ym`` files *and* a correctly mixed ``.mp3``
-from a single inference. This driver renders the in-memory ``n_chips=2`` song straight to
-``.mp3`` (exactly what ``preview`` does internally) right after writing the ``.ym`` files.
+Pick the front-end with ``--separation`` / ``--transcription`` to mirror the single-chip scripts:
 
-Run on a machine with the ``[yourmt3]`` + ``[mp3]`` extras installed and YourMT3 set up
-(``audio2ay3 setup-yourmt3``). Songs are processed strictly one at a time -- never launch a
-second heavy YourMT3 job alongside it.
+  * basic-pitch + Demucs (default):  ``--separation demucs``
+  * basic-pitch + fine-tuned Demucs: ``--separation demucs-ft``
+  * basic-pitch + 6-stem Demucs:     ``--separation demucs6``
+  * YourMT3 multi-instrument:        ``--transcription yourmt3 --model YMT3+``
 
-    python scripts/convert_long_ymt3plus_dual.py
-    python scripts/convert_long_ymt3plus_dual.py --force          # re-do existing outputs
-    python scripts/convert_long_ymt3plus_dual.py --glob "Goblins*"  # a subset
+Run on a machine with the needed extras (``[neural]`` / ``[yourmt3]`` plus ``[mp3]``) installed.
+Songs are processed strictly one at a time -- never launch a second heavy job alongside it.
+
+    python scripts/convert_long_dual.py --separation demucs6 --out-dir results/demucs6_dual
+    python scripts/convert_long_dual.py --transcription yourmt3 --model "YMT3+" \\
+        --separation none --out-dir results/ymt3plus_dual
 """
 
 from __future__ import annotations
@@ -37,11 +40,18 @@ _AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".flac", ".m4a"}
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
-        description="Batch dual-AY YourMT3 (YMT3+) conversion -> .ym + mixed .mp3.",
+        description="Batch dual-AY conversion of the long samples -> .ym + mixed .mp3.",
     )
     ap.add_argument("--in-dir", default="samples/long", help="folder of input songs")
-    ap.add_argument("--out-dir", default="results/ymt3plus_dual", help="output folder")
-    ap.add_argument("--model", default="YMT3+", help="YourMT3 variant")
+    ap.add_argument("--out-dir", default="results/dual", help="output folder")
+    ap.add_argument("--separation", default="demucs",
+                    choices=["demucs", "demucs-ft", "demucs6", "none"],
+                    help="stem separation backend (ignored by --transcription mt3/yourmt3)")
+    ap.add_argument("--transcription", default="basic-pitch",
+                    choices=["basic-pitch", "mt3", "yourmt3"],
+                    help="transcription backend")
+    ap.add_argument("--model", default=None,
+                    help="YourMT3 variant (only used with --transcription yourmt3)")
     ap.add_argument("--glob", default="*", help="filename glob within --in-dir")
     ap.add_argument("--force", action="store_true",
                     help="re-convert songs whose outputs already exist")
@@ -72,14 +82,16 @@ def main(argv: list[str] | None = None) -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     cfg = RunConfig(
-        chip=ChipConfig(n_chips=2),     # dual-AY: 6 tone channels
-        transcription="yourmt3",
-        yourmt3_model=args.model,        # YMT3+ by default
+        chip=ChipConfig(n_chips=2),          # dual-AY: 6 tone channels
+        separation=args.separation,
+        transcription=args.transcription,
+        yourmt3_model=args.model,
     )
     renderer = Renderer(render_sr=cfg.render_sr, oversample=cfg.oversample)
 
+    front_end = args.transcription + (f"/{args.model}" if args.model else "")
     print(f"Converting {len(inputs)} song(s) from {in_dir} -> {out_dir}")
-    print(f"  backend: yourmt3 / {args.model}  |  chips: 2 (dual-AY)\n")
+    print(f"  front-end: {front_end} + {args.separation}  |  chips: 2 (dual-AY)\n")
 
     failures: list[tuple[str, str]] = []
     for i, src in enumerate(inputs, 1):
@@ -93,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"[{i}/{len(inputs)}] {src.name} ...", flush=True)
         t0 = time.time()
         try:
-            song = convert(str(src), cfg)                       # one YourMT3 inference
+            song = convert(str(src), cfg)                       # one neural pass
             ym_paths = _write_multichip(song, str(out_ym), ym_writer)
             renderer.render_to_file(song, str(out_mp3), bitrate_kbps=cfg.mp3_bitrate_kbps)
         except Exception as exc:  # batch driver: report and keep going to the next song

@@ -12,7 +12,7 @@ REM (clones the GPL YourMT3 backend into the per-user cache; ships the YMT3+ che
 
 set PY=C:\Users\parallelno\AppData\Local\Programs\Python\Python312\python.exe
 
-"%PY%" scripts\convert_long_ymt3plus_dual.py %*
+"%PY%" scripts\convert_long_dual.py --transcription yourmt3 --model "YMT3+" --separation none --out-dir results\ymt3plus_dual %*
 if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
 
 echo.
