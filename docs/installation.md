@@ -12,7 +12,7 @@ see the [CLI reference](cli.md).
 | …also read FLAC/OGG input (needed by `convert`) | `pip install -e ".[dev,mp3,audio]"` | 3.11 or 3.12 |
 | The full neural converter (`convert`/`preview`) | `pip install -e ".[dev,mp3,neural]"` | **3.11 recommended** (3.12 needs an extra step) |
 | MT3 multi-instrument transcription | `pip install "mt3 @ git+https://github.com/magenta/mt3"` | **Linux/WSL only** |
-| YourMT3+ multi-instrument transcription | `pip install -e ".[yourmt3]"` + `audio2ay3 setup-yourmt3` (clones the GPL model repo) | **native Windows OK** |
+| YourMT3+ multi-instrument transcription (**experimental, not recommended**) | `pip install -e ".[yourmt3]"` + `audio2ay3 setup-yourmt3` (clones the GPL model repo) | **native Windows OK** |
 
 Extras combine inside one bracket, e.g. `".[dev,mp3,audio]"`.
 
@@ -75,7 +75,7 @@ The extras:
 | `audio` | soundfile | decoding non-WAV input audio |
 | `neural` | demucs (PyTorch), basic-pitch, onnxruntime, soundfile | the default `convert`/`preview` pipeline |
 | `mt3` | jax, note-seq, seqio, t5, gin-config, tensorflow, librosa (convenience subset only) | the experimental MT3 backend — **see the dedicated section, this extra alone is not enough** |
-| `yourmt3` | torch, torchaudio, lightning, transformers, einops, mido, librosa, pretty_midi | the YourMT3+ backend (runs on native Windows) — **the GPL-3.0 model code is cloned separately; see the dedicated section** |
+| `yourmt3` | torch, torchaudio, lightning, transformers, einops, mido, librosa, pretty_midi, wandb | the **experimental** YourMT3+ backend (runs on native Windows, but transcribed sparsely vs basic-pitch in testing — not recommended) — **the GPL-3.0 model code is cloned separately; see the dedicated section** |
 
 On **Python 3.11** the `neural` command above resolves as-is. On **Python 3.12** use the
 workaround below.
@@ -148,7 +148,14 @@ python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.y
 > done
 > ```
 
-## YourMT3+ transcription (`--transcription yourmt3`) — MT3-class, runs on native Windows
+## YourMT3+ transcription (`--transcription yourmt3`) — experimental, not recommended
+
+> **Status: experimental — not recommended.** In testing it transcribed *more sparsely* than
+> `basic-pitch` on real material (e.g. `Goblins_Lair`: ~55% pitched duty cycle, multi-second melodic
+> gaps, very staccato notes) and was far slower (tens of minutes on a GPU vs seconds for
+> basic-pitch). The shortfall is the raw transcription, not the AY arrangement. Kept as an optional
+> backend for experimentation only; prefer **`basic-pitch`** (native-Windows default) or **MT3**
+> (Linux/WSL) for multi-instrument quality.
 
 [YourMT3+](https://github.com/mimbres/YourMT3) is MT3-class multi-instrument transcription on a
 **pure PyTorch** stack (`torch`, `torchaudio`, `lightning`, `transformers`, `einops`, `mido`,

@@ -53,7 +53,7 @@ mt3 = ["jax", "note-seq", "seqio", "t5", "gin-config", "tensorflow", "librosa"]
 yourmt3 = [
     "torch", "torchaudio", "lightning>=2.2.1", "torchmetrics<1.7",
     "transformers==4.45.1", "numpy==1.26.4",
-    "einops", "mido", "librosa", "pretty_midi",
+    "einops", "mido", "librosa", "pretty_midi", "wandb",
 ]
 dev = ["pytest>=8", "pytest-xdist", "ruff", "mypy"]
 

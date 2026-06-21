@@ -169,7 +169,15 @@ def _get_model(repo_dir: str, model_name: str, checkpoint: str):
     precision = "16" if torch.cuda.is_available() else "32"
     device = "cuda" if torch.cuda.is_available() else "cpu"
     args = [ckpt, "-p", _PROJECT, *flags, "-pr", precision]
-    model = load_model_checkpoint(args=args, device=device)
+    # YourMT3 resolves the checkpoint path (amt/logs/<project>/<exp>/checkpoints/*.ckpt) relative
+    # to the *current working directory*, so the model must be loaded from inside the checkout —
+    # otherwise it fails with "No checkpoint found in amt." regardless of where the CLI was run.
+    prev_cwd = os.getcwd()
+    os.chdir(repo_dir)
+    try:
+        model = load_model_checkpoint(args=args, device=device)
+    finally:
+        os.chdir(prev_cwd)
     model.to(device)
     _MODEL_CACHE[key] = model
     return model

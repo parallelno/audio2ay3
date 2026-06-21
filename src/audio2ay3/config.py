@@ -117,7 +117,7 @@ class RunConfig:
     use_gpu: bool = True  # auto-falls back to CPU
     threads: int = 0  # 0 = auto
     # Neural analysis stack (no DSP option by design):
-    separation: Literal["demucs", "spleeter", "none"] = "demucs"
+    separation: Literal["demucs", "demucs-ft", "demucs6", "spleeter", "none"] = "demucs"
     transcription: Literal["basic-pitch", "mt3", "yourmt3", "onsets-frames"] = "basic-pitch"
     render_sr: int = 44_100
     oversample: int = 2
