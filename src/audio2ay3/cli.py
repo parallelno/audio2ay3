@@ -32,6 +32,16 @@ def _write_multichip(song, out: str, ym_writer) -> list[str]:
     return paths
 
 
+def _make_progress(args: argparse.Namespace, cfg, *, render: bool):
+    """A stage progress reporter for convert/preview, or ``None`` when disabled / non-interactive."""
+    if getattr(args, "no_progress", False) or not sys.stderr.isatty():
+        return None
+    from .pipeline import progress_total
+    from .progress import ProgressReporter
+
+    return ProgressReporter(progress_total(cfg, render=render))
+
+
 def _build_run_config(args: argparse.Namespace) -> RunConfig:
     from .config import AmpEnvelope, Vibrato
 
@@ -104,8 +114,9 @@ def cmd_convert(args: argparse.Namespace) -> int:
 
     explain = getattr(args, "explain", False)
     trace: list | None = [] if explain else None
+    progress = _make_progress(args, cfg, render=False)
     try:
-        song = convert(args.input, cfg, trace=trace)
+        song = convert(args.input, cfg, trace=trace, progress=progress)
     except FileNotFoundError:
         print(f"error: file not found: {args.input}", file=sys.stderr)
         return 3
@@ -140,8 +151,10 @@ def cmd_preview(args: argparse.Namespace) -> int:
 
     explain = getattr(args, "explain", False)
     trace: list | None = [] if explain else None
+    progress = _make_progress(args, cfg, render=True)
     try:
-        song = preview(args.input, out, cfg, max_seconds=args.duration, trace=trace)
+        song = preview(args.input, out, cfg, max_seconds=args.duration, trace=trace,
+                       progress=progress)
     except FileNotFoundError:
         print(f"error: file not found: {args.input}", file=sys.stderr)
         return 3
@@ -193,6 +206,8 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
                          "writes chip 1 to <name>.ay2.ym)")
     sp.add_argument("--no-gpu", action="store_true", dest="no_gpu",
                     help="force CPU for neural models")
+    sp.add_argument("--no-progress", action="store_true", dest="no_progress",
+                    help="disable the per-stage progress bar")
     sp.add_argument("--seed", type=int, default=0, help="deterministic seed")
 
 

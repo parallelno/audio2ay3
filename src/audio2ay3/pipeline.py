@@ -37,6 +37,7 @@ from .mapping import (
     percussion_busy_frames,
     place_bass,
 )
+from .progress import NullProgress, Progress
 from .ymformat.model import YmSong
 
 # A breathy wind voice gets a short noise "chiff" at each note's attack: bright air for the first
@@ -177,25 +178,41 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
 
 
 def convert(
-    path: str, cfg: RunConfig, *, trace: list[Transcription] | None = None
+    path: str,
+    cfg: RunConfig,
+    *,
+    trace: list[Transcription] | None = None,
+    progress: Progress | None = None,
 ) -> YmSong:
     """Full neural conversion: audio file -> arranged :class:`YmSong`.
 
     When *trace* is given, the pre-arrange :class:`Transcription` is appended to it, so callers
     (e.g. ``--explain``) can inspect the musical demand without re-running the neural stack.
+
+    *progress* (optional) is advanced once per pipeline stage so the CLI can draw a bar; pass
+    ``None`` (the default) for silent library use.
     """
-    tr = _build_transcription(path, cfg)
+    p = progress or NullProgress()
+    tr = _build_transcription(path, cfg, p)
     if trace is not None:
         trace.append(tr)
+    p.step("arranging")
     return arrange(tr, cfg, name=Path(path).stem)
 
 
-def _build_transcription(path: str, cfg: RunConfig) -> Transcription:
+def _build_transcription(path: str, cfg: RunConfig, progress: Progress) -> Transcription:
     """Run the neural front-end into a :class:`Transcription` (everything before ``arrange``)."""
+    progress.step("loading audio")
     audio, sr = load_audio(path, cfg.render_sr)
     if cfg.transcription in ("mt3", "yourmt3"):
+        progress.step("transcribing (multitrack)")
         return _build_transcription_multitrack(audio, sr, cfg)
+    # Mirrors _stage_labels: the "separating stems" / "detecting percussion" stages only exist
+    # when a real separation runs (mode != "none" yields bass + drum stems).
+    if cfg.separation != "none":
+        progress.step("separating stems")
     stems = separate_stems(audio, sr, cfg.separation)
+    progress.step("transcribing")
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     # Follow each note's real loudness shape from its own stem so held notes sustain and plucks
     # decay like the original; skipped under --no-amp-envelope, which wants flat amplitude.
@@ -204,6 +221,7 @@ def _build_transcription(path: str, cfg: RunConfig) -> Transcription:
             tr.notes, stems.instrumental, stems.sr, cfg.chip.frame_rate_hz
         )
     if stems.drums is not None:
+        progress.step("detecting percussion")
         # Reference the whole-track RMS so a drum-less stem's residual bleed can't fire phantom
         # hits (its velocities are otherwise normalised against its own near-silent dynamics).
         ref_rms = float(np.sqrt(np.mean(np.square(audio)))) if audio.size else 0.0
@@ -242,13 +260,43 @@ def preview(
     *,
     max_seconds: float | None = None,
     trace: list[Transcription] | None = None,
+    progress: Progress | None = None,
 ) -> YmSong:
     """Convert *path* and render the result to audio at *out_path*; returns the song."""
     from .render import Renderer
 
-    song = convert(path, cfg, trace=trace)
+    p = progress or NullProgress()
+    song = convert(path, cfg, trace=trace, progress=p)
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
+    p.step("rendering audio")
     Renderer(render_sr=cfg.render_sr, oversample=cfg.oversample).render_to_file(
         song, out_path, bitrate_kbps=cfg.mp3_bitrate_kbps, max_seconds=max_seconds
     )
     return song
+
+
+def stage_labels(cfg: RunConfig, *, render: bool) -> list[str]:
+    """The ordered stage labels :func:`convert`/:func:`preview` will emit for *cfg*.
+
+    The single source of truth for the progress bar's length: it mirrors the branching in
+    :func:`_build_transcription` (separation/percussion stages exist only when a real separation
+    runs) so the emitted ``step`` count always matches ``len(stage_labels(...))``.
+    """
+    labels = ["loading audio"]
+    if cfg.transcription in ("mt3", "yourmt3"):
+        labels.append("transcribing (multitrack)")
+    else:
+        if cfg.separation != "none":
+            labels.append("separating stems")
+        labels.append("transcribing")
+        if cfg.separation != "none":
+            labels.append("detecting percussion")
+    labels.append("arranging")
+    if render:
+        labels.append("rendering audio")
+    return labels
+
+
+def progress_total(cfg: RunConfig, *, render: bool) -> int:
+    """Number of progress steps :func:`convert` (``render=False``)/:func:`preview` will report."""
+    return len(stage_labels(cfg, render=render))

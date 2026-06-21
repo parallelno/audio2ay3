@@ -98,7 +98,7 @@ hardware-legal `.ym` register stream. Needs the `neural` and `audio` extras.
 ```
 audio2ay3 convert <input-audio> [-o OUT]
                   [--separation {demucs,spleeter,none}] [--transcription {basic-pitch,mt3,yourmt3,onsets-frames}]
-                  [--clock HZ] [--frame-rate HZ] [--chips N] [--no-gpu] [--seed N]
+                  [--clock HZ] [--frame-rate HZ] [--chips N] [--no-gpu] [--no-progress] [--seed N]
                   [--no-amp-envelope] [--explain]
 ```
 
@@ -114,6 +114,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `--frame-rate HZ` | `50` | Replay frame rate. |
 | `--chips N` | `1` | Number of AY chips: `1` (3 tone channels) or `2` (dual-AY, 6 tone channels). With two chips the melody spreads across four channels instead of one or two, bass keeps its own channel, and percussion is isolated on the second chip. `convert` writes chip 0 to the named `.ym` and chip 1 to `<name>.ay2.ym` (the YM format has no standard dual-PSG container); `preview` renders both chips into one audio file. |
 | `--no-gpu` | off | Force CPU for the neural models (they otherwise auto-detect). |
+| `--no-progress` | off | Disable the per-stage progress bar (also auto-suppressed when stderr is not a terminal, e.g. when piped or redirected). |
 | `--seed N` | `0` | Deterministic seed for the neural stages. |
 
 ### Arrangement options
@@ -196,7 +197,7 @@ quick A/B listening without a separate `validate` step. Needs the same extras as
 audio2ay3 preview <input-audio> [-o OUT] [--wav] [--sr N] [--oversample N] [--bitrate N]
                   [--duration SEC]
                   [--separation ...] [--transcription ...] [--clock HZ] [--frame-rate HZ]
-                  [--chips N] [--no-gpu] [--seed N] [--no-amp-envelope] [--explain]
+                  [--chips N] [--no-gpu] [--no-progress] [--seed N] [--no-amp-envelope] [--explain]
 ```
 
 `preview` accepts every `convert` analysis/arrangement option above, plus the audio-rendering
