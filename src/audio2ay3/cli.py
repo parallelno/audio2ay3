@@ -211,8 +211,8 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
                          "variant with --yourmt3-model)")
     sp.add_argument("--yourmt3-model", dest="yourmt3_model", choices=list(_YOURMT3_MODELS),
                     default=None,
-                    help="YourMT3 variant for --transcription yourmt3 (default: backend default / "
-                         "AUDIO2AY3_YOURMT3_MODEL; 'YMT3+' did best in testing)")
+                    help="YourMT3 variant for --transcription yourmt3 (default: 'YMT3+', "
+                         "overridable via AUDIO2AY3_YOURMT3_MODEL)")
     sp.add_argument("--clock", type=int, default=None, help="master clock (Hz)")
     sp.add_argument("--frame-rate", type=int, default=None, dest="frame_rate",
                     help="replay frame rate (Hz)")
@@ -288,8 +288,9 @@ def build_parser() -> argparse.ArgumentParser:
                     help="checkout directory (default: a per-user cache dir)")
     sy.add_argument("--repo-url", dest="repo_url", default=None,
                     help="clone URL (default: the YourMT3 HuggingFace Space)")
-    sy.add_argument("--model", default="YPTF.MoE+Multi (noPS)", choices=list(_YOURMT3_MODELS),
-                    help="model variant to verify a checkpoint for ('YMT3+' did best in testing)")
+    sy.add_argument("--model", default="YMT3+", choices=list(_YOURMT3_MODELS),
+                    help="model variant to verify a checkpoint for (default 'YMT3+' did best in "
+                         "testing)")
     sy.add_argument("--force", action="store_true",
                     help="update an existing checkout (git pull) instead of skipping")
     sy.set_defaults(func=cmd_setup_yourmt3)

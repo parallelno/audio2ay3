@@ -148,10 +148,10 @@ def test_resolve_model_name_precedence(monkeypatch):
     # Nothing set -> backend default.
     assert _resolve_model_name(None) == _DEFAULT_MODEL
     # An explicit name (e.g. from --yourmt3-model) is honoured.
-    assert _resolve_model_name("YMT3+") == "YMT3+"
-    # The env var is used when no explicit name is given...
-    monkeypatch.setenv("AUDIO2AY3_YOURMT3_MODEL", "YMT3+")
-    assert _resolve_model_name(None) == "YMT3+"
+    assert _resolve_model_name("YPTF.MoE+Multi (noPS)") == "YPTF.MoE+Multi (noPS)"
+    # The env var is used when no explicit name is given (use a non-default variant to prove it)...
+    monkeypatch.setenv("AUDIO2AY3_YOURMT3_MODEL", "YPTF.MoE+Multi (noPS)")
+    assert _resolve_model_name(None) == "YPTF.MoE+Multi (noPS)"
     # ...but an explicit name wins over the env var.
     assert _resolve_model_name("YPTF.MoE+Multi (PS)") == "YPTF.MoE+Multi (PS)"
 

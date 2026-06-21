@@ -45,9 +45,8 @@ _MODEL_ENV = "AUDIO2AY3_YOURMT3_MODEL"
 
 # YourMT3 organises checkpoints under a project id; "2024" matches the released MLSP'24 models.
 _PROJECT = "2024"
-# Default variant: the MT3-lineage model with a GM-extended vocabulary (``gm_ext``) and no
-# pitch-shift augmentation (``nops``). It is lighter/faster than the Perceiver-TF MoE decoders and
-# transcribed notably better on our test material (the heavy MoE variants came out sparse).
+# Default variant: the lighter MT3-lineage model with a General-MIDI-extended vocabulary. It did
+# best in testing — recovering notes the heavier Perceiver-TF MoE variants transcribed sparsely.
 _DEFAULT_MODEL = "YMT3+"
 
 # Architecture flags + default checkpoint per model variant, transcribed from the upstream demo's

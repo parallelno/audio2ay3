@@ -109,8 +109,8 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `input` | — | Input audio (WAV/FLAC/OGG; MP3 if your libsndfile build supports it). |
 | `-o`, `--output` | `build/<name>.ym` | Output `.ym` path. |
 | `--separation` | `demucs` | Source-separation backend. `demucs` is `htdemucs` (4-stem). `demucs-ft` is the fine-tuned `htdemucs_ft` — better separation, ~4× slower. `demucs6` is the 6-stem `htdemucs_6s` (adds guitar/piano; **experimental**). `none` skips separation — use it for already-instrumental input. `spleeter` is recognised but not implemented (raises a clear error). |
-| `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is an optional, opt-in pure-PyTorch multi-instrument backend that installs on native Windows (GPL-3.0 model installed separately; see the README). Its default variant transcribed sparsely in testing, but the `YMT3+` variant did notably better — recover it with `--yourmt3-model YMT3+`. `onsets-frames` is reserved and raises a clear error. |
-| `--yourmt3-model NAME` | backend default | Only with `--transcription yourmt3`: pick the YourMT3 variant. Choices: `YPTF.MoE+Multi (noPS)` (the backend default), `YPTF.MoE+Multi (PS)`, `YPTF+Multi (PS)`, `YMT3+`. **`YMT3+` did best in testing** — it recovered notes the heavier MoE variants missed and was faster. When omitted, the value falls back to the `AUDIO2AY3_YOURMT3_MODEL` env var and then the backend default. |
+| `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is an optional, opt-in pure-PyTorch multi-instrument backend that installs on native Windows (GPL-3.0 model installed separately; see the README). It defaults to the `YMT3+` variant, which did best in testing; the heavier MoE variants transcribed more sparsely. `onsets-frames` is reserved and raises a clear error. |
+| `--yourmt3-model NAME` | `YMT3+` | Only with `--transcription yourmt3`: pick the YourMT3 variant. Choices: `YMT3+` (the default; did best in testing — recovered notes the MoE variants missed, and was faster), `YPTF.MoE+Multi (noPS)`, `YPTF.MoE+Multi (PS)`, `YPTF+Multi (PS)`. When omitted, the value falls back to the `AUDIO2AY3_YOURMT3_MODEL` env var and then the `YMT3+` default. |
 | `--clock HZ` | `1773400` | AY master clock (default ≈ 1.7734 MHz, ZX Spectrum). |
 | `--frame-rate HZ` | `50` | Replay frame rate. |
 | `--chips N` | `1` | Number of AY chips: `1` (3 tone channels) or `2` (dual-AY, 6 tone channels). With two chips the melody spreads across four channels instead of one or two, bass keeps its own channel, and percussion is isolated on the second chip. `convert` writes chip 0 to the named `.ym` and chip 1 to `<name>.ay2.ym` (the YM format has no standard dual-PSG container); `preview` renders both chips into one audio file. |
@@ -150,9 +150,9 @@ audio2ay3 convert samples\long\Goblins_Lair.mp3 --vibrato --breath --arpeggio
 python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.ym --transcription mt3
 
 # YourMT3+ multi-instrument backend (native Windows OK). Run `audio2ay3 setup-yourmt3` once to
-# fetch the GPL-3.0 model into a per-user cache; then no env vars are needed. The YMT3+ variant
-# did best in testing (recovered notes the default MoE variant missed):
-python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3 --yourmt3-model "YMT3+"
+# fetch the GPL-3.0 model into a per-user cache; then no env vars are needed. Defaults to the
+# YMT3+ variant, which did best in testing:
+python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3
 ```
 
 ---
@@ -164,9 +164,10 @@ Fetch the optional **YourMT3+** transcription backend (GPL-3.0) into a per-user 
 the checkpoints); it does **not** import torch. The GPL model code is fetched onto your machine at
 runtime and is never bundled into this MIT project.
 
-> **Optional, opt-in.** The `yourmt3` backend's default variant transcribed sparsely in testing,
-> but the `YMT3+` variant did notably better — fetch its checkpoint with `--model "YMT3+"` here and
-> select it at convert time with `--yourmt3-model YMT3+`.
+> **Optional, opt-in.** The `yourmt3` backend defaults to the `YMT3+` variant, which did best in
+> testing (the heavier MoE variants transcribed more sparsely). `setup-yourmt3` verifies `YMT3+`'s
+> checkpoint by default; pick another with `--model` and select it at convert time with
+> `--yourmt3-model`.
 
 ```
 audio2ay3 setup-yourmt3 [--dir PATH] [--repo-url URL] [--model NAME] [--force]
@@ -176,7 +177,7 @@ audio2ay3 setup-yourmt3 [--dir PATH] [--repo-url URL] [--model NAME] [--force]
 |--------|---------|---------|
 | `--dir PATH` | per-user cache | Checkout location. `AUDIO2AY3_YOURMT3_DIR` overrides the default at convert time. |
 | `--repo-url URL` | YourMT3 HuggingFace Space | Clone URL. The Space colocates `model_helper.py` + `amt/` and carries the LFS checkpoints. Use this to point at a mirror/fork. |
-| `--model NAME` | `YPTF.MoE+Multi (noPS)` | Model variant whose checkpoint presence is verified after cloning. Choices: `YPTF.MoE+Multi (noPS)`, `YPTF.MoE+Multi (PS)`, `YPTF+Multi (PS)`, `YMT3+` (did best in testing). |
+| `--model NAME` | `YMT3+` | Model variant whose checkpoint presence is verified after cloning. Choices: `YMT3+` (default; did best in testing), `YPTF.MoE+Multi (noPS)`, `YPTF.MoE+Multi (PS)`, `YPTF+Multi (PS)`. |
 | `--force` | off | Update an existing checkout (`git pull`) instead of skipping. |
 
 The command clones the repo, verifies that `model_helper.py` + `amt/src` are present, and reports
