@@ -10,7 +10,7 @@ from __future__ import annotations
 import numpy as np
 
 from audio2ay3.analysis.model import Note, Percussion, Transcription
-from audio2ay3.config import AmpEnvelope, RunConfig
+from audio2ay3.config import AmpEnvelope, RunConfig, Vibrato
 from audio2ay3.encode.quantize import quantize_tone
 from audio2ay3.pipeline import arrange
 from audio2ay3.render import Renderer
@@ -183,7 +183,8 @@ def test_arrange_vibrato_wobbles_a_sustained_wind_voice():
     # A flute (GM 73) gets an idiomatic pitch LFO: its tone period must wobble over a long note
     # once the clean-attack delay has passed, staying within a few percent of the true period.
     flute = Note(0.0, 0.6, 440.0, velocity=1.0, program=73)
-    song = arrange(Transcription(notes=[flute]), RunConfig())  # no bass -> channel A (R0/R1)
+    cfg = RunConfig(vibrato=Vibrato(enabled=True))  # opt-in
+    song = arrange(Transcription(notes=[flute]), cfg)  # no bass -> channel A (R0/R1)
     tp = [int(song.frames[f, 0]) | (int(song.frames[f, 1]) << 8) for f in range(30)]
     base = quantize_tone(440.0, CLOCK)
     assert len(set(tp[10:30])) > 1  # wobbles once vibrato has ramped in
@@ -191,18 +192,28 @@ def test_arrange_vibrato_wobbles_a_sustained_wind_voice():
 
 
 def test_arrange_no_vibrato_on_a_struck_instrument():
-    # A piano (GM 0) is not a vibrato family, so its tone period is rock-steady.
+    # A piano (GM 0) is not a vibrato family, so its tone period is rock-steady even with the
+    # vibrato feature switched on.
     piano = Note(0.0, 0.6, 440.0, velocity=1.0, program=0)
-    song = arrange(Transcription(notes=[piano]), RunConfig())
+    cfg = RunConfig(vibrato=Vibrato(enabled=True))
+    song = arrange(Transcription(notes=[piano]), cfg)
     tp = {int(song.frames[f, 0]) | (int(song.frames[f, 1]) << 8) for f in range(30)}
     assert len(tp) == 1  # steady pitch
+
+
+def test_arrange_vibrato_off_by_default():
+    # Opt-in: a flute holds a steady pitch unless the vibrato feature is explicitly enabled.
+    flute = Note(0.0, 0.6, 440.0, velocity=1.0, program=73)
+    song = arrange(Transcription(notes=[flute]), RunConfig())
+    tp = {int(song.frames[f, 0]) | (int(song.frames[f, 1]) << 8) for f in range(30)}
+    assert len(tp) == 1  # no wobble by default
 
 
 def test_arrange_breath_chiff_adds_noise_at_a_wind_attack():
     # A flute (GM 73) gets a brief noise chiff at its attack: noise enabled on its own channel
     # for the first frames (mixer noise-A bit cleared, R6 set), then a clean tone.
     flute = Note(0.0, 0.4, 440.0, velocity=1.0, program=73)
-    song = arrange(Transcription(notes=[flute]), RunConfig())  # no bass -> channel A
+    song = arrange(Transcription(notes=[flute]), RunConfig(breath=True))  # opt-in, channel A
     r6 = song.frames[:, 6].astype(int)
     r7 = song.frames[:, 7].astype(int)
     assert (r7[0] >> 3) & 1 == 0 and (r7[1] >> 3) & 1 == 0  # noise on A during the chiff
@@ -210,12 +221,20 @@ def test_arrange_breath_chiff_adds_noise_at_a_wind_attack():
     assert (r7[2] >> 3) & 1 == 1  # chiff over -> noise off on A, clean tone after
 
 
+def test_arrange_breath_chiff_off_by_default():
+    # Opt-in: no breath noise on a flute attack unless the feature is enabled.
+    flute = Note(0.0, 0.4, 440.0, velocity=1.0, program=73)
+    song = arrange(Transcription(notes=[flute]), RunConfig())
+    r7 = song.frames[:4, 7].astype(int)
+    assert all((v >> 3) & 1 == 1 for v in r7)  # noise-A never enabled
+
+
 def test_arrange_breath_chiff_yields_to_drums():
     # When a wind attack coincides with a drum, the drum owns the shared noise generator, so the
     # breath chiff is suppressed: channel A's noise bit is never enabled.
     flute = Note(0.0, 0.4, 440.0, velocity=1.0, program=73)
     tr = Transcription(notes=[flute], percussion=[Percussion(0.0, "snare")])
-    song = arrange(tr, RunConfig())  # flute -> channel A, snare -> channel C
+    song = arrange(tr, RunConfig(breath=True))  # flute -> channel A, snare -> channel C
     r7 = song.frames[:4, 7].astype(int)
     assert all((v >> 3) & 1 == 1 for v in r7)  # noise-A never enabled (breath deferred)
 

@@ -134,7 +134,8 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             # Breath: a short noise chiff at the attack of flute/pipe/reed voices imitates the
             # instrument's air, but only when no drum is using the shared noise generator.
             if (
-                is_breath_program(voice.program)
+                cfg.breath
+                and is_breath_program(voice.program)
                 and age[ch] < _BREATH_ATTACK_FRAMES
                 and not drum_busy[f]
             ):

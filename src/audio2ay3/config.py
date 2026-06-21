@@ -88,9 +88,12 @@ class Vibrato:
     identity: flutes, strings, reeds, organs and synth leads idiomatically vibrato, and a few
     cents of wobble is what makes a bare AY square read as a living tone instead of a dead
     oscillator. The wobble ramps in after the attack so onsets stay clean and in tune.
+
+    Opt-in: ``enabled`` defaults to ``False`` (it can colour timbres in ways that hurt some
+    sources); turn it on per run when the material benefits.
     """
 
-    enabled: bool = True
+    enabled: bool = False
     rate_hz: float = 6.0  # LFO frequency (musical vibrato sits ~5-7 Hz)
     depth_cents: float = 22.0  # peak pitch deviation either side of the note
     onset_delay_frames: int = 3  # hold a clean, in-tune attack before the wobble starts
@@ -121,7 +124,11 @@ class RunConfig:
     mp3_bitrate_kbps: int = 192
     seed: int = 0
     amp_envelope: AmpEnvelope = field(default_factory=AmpEnvelope)
+    # Idiomatic pitch vibrato for expressive instruments (opt-in: see Vibrato.enabled).
     vibrato: Vibrato = field(default_factory=Vibrato)
+    # Breathy noise chiff at the attack of wind voices (opt-in: off by default).
+    breath: bool = False
     # Cycle squeezed chord tones on one channel instead of dropping them when more notes sound
     # at once than there are free tone channels (the classic chiptune "arpeggio chord").
-    arpeggio: bool = True
+    # Opt-in: off by default.
+    arpeggio: bool = False

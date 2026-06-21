@@ -22,7 +22,7 @@ def _default_out(inp: str, ext: str) -> str:
 
 
 def _build_run_config(args: argparse.Namespace) -> RunConfig:
-    from .config import AmpEnvelope
+    from .config import AmpEnvelope, Vibrato
 
     base = ChipConfig()
     chip = ChipConfig(
@@ -40,6 +40,9 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         mp3_bitrate_kbps=getattr(args, "bitrate", 192),
         seed=getattr(args, "seed", 0),
         amp_envelope=AmpEnvelope(enabled=not getattr(args, "no_amp_envelope", False)),
+        vibrato=Vibrato(enabled=getattr(args, "vibrato", False)),
+        breath=getattr(args, "breath", False),
+        arpeggio=getattr(args, "arpeggio", False),
     )
 
 
@@ -159,6 +162,13 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
 def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--no-amp-envelope", action="store_true", dest="no_amp_envelope",
                     help="disable per-note amplitude shaping (flat, constant-volume notes)")
+    sp.add_argument("--vibrato", action="store_true",
+                    help="add a pitch-LFO vibrato to expressive voices "
+                         "(organ/strings/reed/pipe/synth lead)")
+    sp.add_argument("--breath", action="store_true",
+                    help="add a breathy noise chiff at the attack of wind voices (reeds/pipes)")
+    sp.add_argument("--arpeggio", action="store_true",
+                    help="cycle squeezed chord tones on one channel instead of dropping them")
     sp.add_argument("--explain", action="store_true",
                     help="print register-level diagnostics for the arranged song")
 
