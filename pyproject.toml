@@ -42,14 +42,17 @@ mt3 = ["jax", "note-seq", "seqio", "t5", "gin-config", "tensorflow", "librosa"]
 # (no JAX/t5x/tensorflow-text), so unlike the mt3 extra it pip-installs on NATIVE WINDOWS. Fully
 # opt-in; never touched by the default conversion or the test suite. This extra is only the
 # pip-installable runtime stack — the model code itself is GPL-3.0 and is NOT bundled here (this
-# project is MIT). You clone it yourself and point us at it, mirroring the mt3 backend:
+# project is MIT). The setup helper clones it onto your machine and wires it up:
 #   pip install -e ".[yourmt3]"                                   # the PyTorch runtime below
-#   git clone https://github.com/mimbres/YourMT3                  # GPL-3.0 model code (separate)
-#   set AUDIO2AY3_YOURMT3_DIR=<the YourMT3 checkout>              # download a checkpoint per its README
-#   set AUDIO2AY3_YOURMT3_CHECKPOINT=<checkpoint@*.ckpt>          # optional; preset has a default
+#   audio2ay3 setup-yourmt3                                       # clones GPL model code + checkpoints
+#   audio2ay3 convert <audio> --transcription yourmt3            # no env vars needed after setup
 # CPU inference works (fp32, slow); GPU uses fp16. See audio2ay3/analysis/_yourmt3_infer.py.
+# NOTE: torchmetrics is capped <1.7 on purpose — 1.7+ eagerly imports torchvision (the ARNIQA
+# metric) when pytorch_lightning loads, which hard-crashes on any torch/torchvision version skew.
+# YourMT3 inference never uses torchvision, so the cap removes that whole failure mode.
 yourmt3 = [
-    "torch", "torchaudio", "lightning>=2.2.1", "transformers==4.45.1", "numpy==1.26.4",
+    "torch", "torchaudio", "lightning>=2.2.1", "torchmetrics<1.7",
+    "transformers==4.45.1", "numpy==1.26.4",
     "einops", "mido", "librosa", "pretty_midi",
 ]
 dev = ["pytest>=8", "pytest-xdist", "ruff", "mypy"]
