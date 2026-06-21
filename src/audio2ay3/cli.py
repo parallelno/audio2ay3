@@ -162,8 +162,10 @@ def cmd_setup_yourmt3(args: argparse.Namespace) -> int:
 
 
 def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
-    sp.add_argument("--separation", choices=["demucs", "spleeter", "none"],
-                    default="demucs", help="neural source separation backend")
+    sp.add_argument("--separation", choices=["demucs", "demucs-ft", "demucs6", "spleeter", "none"],
+                    default="demucs",
+                    help="neural source separation backend (demucs-ft = better/slower; "
+                         "demucs6 = 6-stem, experimental)")
     sp.add_argument("--transcription", choices=["basic-pitch", "mt3", "yourmt3", "onsets-frames"],
                     default="basic-pitch",
                     help="neural transcription backend (yourmt3 is experimental/not recommended)")

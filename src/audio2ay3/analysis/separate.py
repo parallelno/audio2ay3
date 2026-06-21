@@ -34,18 +34,34 @@ class SeparationResult:
     sr: int
 
 
+# Friendly separation mode -> Demucs pretrained model name. ``htdemucs`` is the 4-source default;
+# ``htdemucs_ft`` is its fine-tuned bag-of-4 (better SDR, ~4x slower); ``htdemucs_6s`` adds
+# separate guitar + piano stems (experimental — those two are noisier than the core four).
+_DEMUCS_MODELS = {
+    "demucs": "htdemucs",
+    "demucs-ft": "htdemucs_ft",
+    "demucs6": "htdemucs_6s",
+}
+
+
 def separate_stems(audio: np.ndarray, sr: int, mode: str = "demucs") -> SeparationResult:
     """Split *audio* into a pitched instrumental plus isolated bass and drum stems.
 
-    - ``none``   -> input is the instrumental, no bass/drum stems.
-    - ``demucs`` -> Demucs stems: instrumental = (all − vocals − drums − bass), bass & drums
-      kept separate.
-    - ``spleeter`` -> not wired yet.
+    - ``none``      -> input is the instrumental, no bass/drum stems.
+    - ``demucs``    -> Demucs ``htdemucs`` (4-source): instrumental = (all − vocals − drums −
+      bass), bass & drums kept separate.
+    - ``demucs-ft`` -> Demucs ``htdemucs_ft`` (fine-tuned bag-of-4): same stems, better SDR,
+      ~4× slower — a quality option for offline ``convert``.
+    - ``demucs6``   -> Demucs ``htdemucs_6s`` (6-source, **experimental**): the model also
+      separates guitar + piano internally; we still fold every non-vocal/drum/bass stem
+      (other + guitar + piano) into the instrumental. Those two extra stems are noisier than
+      the core four, so treat it as experimental.
+    - ``spleeter``  -> not wired yet.
     """
     if mode == "none":
         return SeparationResult(instrumental=audio, drums=None, bass=None, sr=sr)
-    if mode == "demucs":
-        return _separate_demucs(audio, sr)
+    if mode in _DEMUCS_MODELS:
+        return _separate_demucs(audio, sr, _DEMUCS_MODELS[mode])
     if mode == "spleeter":
         raise NotImplementedError(
             "Spleeter backend is not wired yet; use --separation demucs or none."
@@ -58,7 +74,7 @@ def separate(audio: np.ndarray, sr: int, mode: str = "demucs") -> np.ndarray:
     return separate_stems(audio, sr, mode).instrumental
 
 
-def _separate_demucs(audio: np.ndarray, sr: int) -> SeparationResult:
+def _separate_demucs(audio: np.ndarray, sr: int, model_name: str = "htdemucs") -> SeparationResult:
     try:
         import torch
         from demucs.apply import apply_model
@@ -68,7 +84,7 @@ def _separate_demucs(audio: np.ndarray, sr: int) -> SeparationResult:
             "Demucs separation needs the 'neural' extra: pip install audio2ay3[neural]"
         ) from exc
 
-    model = get_model("htdemucs")
+    model = get_model(model_name)
     model.eval()
     model_sr = model.samplerate
 

@@ -108,7 +108,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 |--------|---------|---------|
 | `input` | — | Input audio (WAV/FLAC/OGG; MP3 if your libsndfile build supports it). |
 | `-o`, `--output` | `build/<name>.ym` | Output `.ym` path. |
-| `--separation` | `demucs` | Source-separation backend. `none` skips separation — use it for already-instrumental input. `spleeter` is recognised but not implemented (raises a clear error). |
+| `--separation` | `demucs` | Source-separation backend. `demucs` is `htdemucs` (4-stem). `demucs-ft` is the fine-tuned `htdemucs_ft` — better separation, ~4× slower. `demucs6` is the 6-stem `htdemucs_6s` (adds guitar/piano; **experimental**). `none` skips separation — use it for already-instrumental input. `spleeter` is recognised but not implemented (raises a clear error). |
 | `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is an **experimental** pure-PyTorch multi-instrument backend that installs on native Windows, but transcribed more sparsely than `basic-pitch` in testing and is slow — not recommended (GPL-3.0 model installed separately; see the README). `onsets-frames` is reserved and raises a clear error. |
 | `--clock HZ` | `1773400` | AY master clock (default ≈ 1.7734 MHz, ZX Spectrum). |
 | `--frame-rate HZ` | `50` | Replay frame rate. |
