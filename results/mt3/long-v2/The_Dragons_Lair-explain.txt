@@ -1,0 +1,29 @@
+/root/mt3-venv/lib/python3.12/site-packages/pydub/utils.py:170: RuntimeWarning: Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work
+  warn("Couldn't find ffmpeg or avconv - defaulting to ffmpeg, but may not work", RuntimeWarning)
+WARNING:jax._src.xla_bridge:An NVIDIA GPU may be present on this machine, but a CUDA-enabled jaxlib is not installed. Falling back to cpu.
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1782001835.469013     829 cuda_executor.cc:1309] INTERNAL: CUDA Runtime error: Failed call to cudaGetRuntimeVersion: Error loading CUDA libraries. GPU will not be used.: Error loading CUDA libraries. GPU will not be used.
+W0000 00:00:1782001835.489498     829 gpu_device.cc:2342] Cannot dlopen some GPU libraries. Please make sure the missing libraries mentioned above are installed properly if you would like to use GPU. Follow the guide at https://www.tensorflow.org/install/gpu for how to download and setup the required libraries for your platform.
+Skipping registering GPU devices...
+ok: 6861 frames (137.2s) -> build/long-v2/The_Dragons_Lair.ym
+explain: 6861 frames, 137.2s
+  polyphony (audible voices/frame): 0=511 1=949 2=2396 3=3005
+  tone-on A/B/C: 89.3% / 79.9% / 45.9%
+  noise frames: 2572 (37.5%)
+  bass (ch A) distinct tone periods: 35
+  amp-change frames A/B/C: [2496, 2205, 1616]  distinct amp levels: 15
+Voice contention (single AY: A=bass, B/C=melody, C also drums):
+  melodic notes:             2067
+  notes never sounded:       1183 (57.2%)
+  note-frames demanded:      33695
+  note-frames sounded:       11326 (33.6%)
+  dropped, no free channel:  20198 (59.9%)
+  dropped, drum stole C:     2171 (6.4%)
+  frames with contention:    4375 (63.8%)
+  bass holds channel A:      3061 (44.6%)
+  drums steal channel C:     2835 (41.3%)
+  simultaneous melodic demand: 0:713 1:878 2:881 3:643 4:642 5+:3104
+  estimate with a 2nd AY chip (4 melodic channels, drums isolated):
+    note-frames would sound: 19553 (58.0%)
+    notes still silent:      717 (34.7%)
+    recovered vs single AY:  +8227 note-frames (24.4% of demand)
