@@ -28,6 +28,10 @@ class Note:
     # synthetic amplitude envelope. This is what lets a held note sustain and a pluck decay
     # like the original instead of every note sharing one fixed curve.
     amp_contour: tuple[float, ...] = ()
+    # General-MIDI program (0-127) when the backend knows the instrument identity (MT3), else
+    # ``None`` (Basic Pitch is pitch-only). The arranger uses it to keep a lead audible over a
+    # pad when tone channels are scarce (see :func:`mapping.voices._program_rank`).
+    program: int | None = None
 
     @property
     def offset_s(self) -> float:

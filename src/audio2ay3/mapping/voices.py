@@ -2,8 +2,9 @@
 
 The skeleton policy is a greedy allocator with **continuity**: a note already sounding on a
 channel stays there while it lasts, so we avoid the frame-to-frame channel hopping that causes
-audible warble. Free channels are filled by priority (louder first, with a mild bass bias), and
-when more than three notes sound at once the quietest are dropped for that frame.
+audible warble. Free channels are filled by priority — instrument identity first (a lead beats a
+pad even when quieter, see :func:`_program_rank`), then loudness, then a mild bass bias — and
+when more notes sound at once than there are channels the lowest-priority are dropped that frame.
 
 The output is intentionally a plain per-frame structure so the encode stage stays the only place
 that touches registers.
@@ -44,6 +45,7 @@ class _Span:
     pitch_hz: float
     velocity: float
     contour: tuple[float, ...] = ()
+    program: int | None = None
 
 
 def _contour_scale(span: _Span, frame: int) -> float | None:
@@ -58,9 +60,41 @@ def _contour_scale(span: _Span, frame: int) -> float | None:
     return span.contour[idx]
 
 
-def _priority(span: _Span) -> tuple[float, float]:
-    # Louder first; ties broken toward lower pitch (bass bias keeps the foundation).
-    return (-span.velocity, span.pitch_hz)
+def _priority(span: _Span) -> tuple[int, float, float]:
+    # Instrument identity first: a quiet lead must beat a loud pad when channels are scarce
+    # (this is what keeps the main theme audible). Within a salience class, louder wins, then
+    # ties break toward lower pitch (a mild bass bias keeps the foundation).
+    return (_program_rank(span.program), -span.velocity, span.pitch_hz)
+
+
+# General-MIDI families split into salience classes. Lower rank = more important to keep.
+# Only the unambiguous families are moved off neutral: the clearest melodic/lead voices are
+# promoted and the clearest sustained-backing/atmosphere voices are demoted, so loudness still
+# decides among the genuinely ambiguous instruments (piano, organ, guitar, solo strings, brass).
+# ``None`` (Basic Pitch, synthetic notes) stays neutral, preserving the loudness-only behaviour.
+_LEAD_PROGRAMS = frozenset(
+    set(range(8, 16))  # Chromatic Percussion (glockenspiel, vibraphone, marimba, music box...)
+    | set(range(64, 72))  # Reed (sax, oboe, clarinet, bassoon...)
+    | set(range(72, 80))  # Pipe (flute, piccolo, recorder, whistle, ocarina...)
+    | set(range(80, 88))  # Synth Lead (square, sawtooth, calliope, charang, lead...)
+)
+_PAD_PROGRAMS = frozenset(
+    set(range(48, 56))  # Ensemble (string/synth-string ensembles, choir, voice, orchestra hit)
+    | set(range(88, 96))  # Synth Pad (new age, warm, polysynth, halo, sweep...)
+    | set(range(96, 104))  # Synth Effects (atmosphere, brightness, soundtrack, sci-fi...)
+    | set(range(120, 128))  # Sound Effects (breath, seashore, applause, gunshot...)
+)
+
+
+def _program_rank(program: int | None) -> int:
+    """Salience class for a GM *program*: 0 = lead/foreground, 1 = neutral, 2 = pad/background."""
+    if program is None:
+        return 1
+    if program in _LEAD_PROGRAMS:
+        return 0
+    if program in _PAD_PROGRAMS:
+        return 2
+    return 1
 
 
 def _spans_from_notes(
@@ -77,7 +111,15 @@ def _spans_from_notes(
         end = min(n_frames, end)
         if start < end:
             spans.append(
-                _Span(note_id, start, end, note.pitch_hz, note.velocity, note.amp_contour)
+                _Span(
+                    note_id,
+                    start,
+                    end,
+                    note.pitch_hz,
+                    note.velocity,
+                    note.amp_contour,
+                    note.program,
+                )
             )
     return spans
 

@@ -151,13 +151,15 @@ def note_sequence_to_transcription(ns, frame_rate_hz: int = 50) -> Transcription
             )
             duration_s = max(duration_s, start)
             continue
+        program = int(getattr(n, "program", 0))
         note = Note(
             onset_s=start,
             duration_s=max(0.0, end - start),
             pitch_hz=_midi_to_hz(int(n.pitch)),
             velocity=velocity,
+            program=program,
         )
-        if int(getattr(n, "program", 0)) in _MT3_BASS_PROGRAMS:
+        if program in _MT3_BASS_PROGRAMS:
             bass_notes.append(note)
         else:
             notes.append(note)

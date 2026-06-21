@@ -65,6 +65,14 @@ def test_note_sequence_routes_drums_bass_and_melody():
     assert tr.duration_s == 1.0  # the longest note offset
 
 
+def test_note_sequence_preserves_gm_program_on_melodic_notes():
+    # The arranger needs instrument identity to keep a lead audible over a pad, so the GM program
+    # must survive the conversion (Basic Pitch leaves it ``None`` by default).
+    ns = _ns([_note(72, 0.0, 0.5, program=81)])  # synth-lead melody
+    tr = note_sequence_to_transcription(ns)
+    assert tr.notes[0].program == 81
+
+
 def test_note_sequence_maps_velocity_and_timing():
     ns = _ns([_note(69, 0.1, 0.6, velocity=64)], total_time=0.0)
     tr = note_sequence_to_transcription(ns)

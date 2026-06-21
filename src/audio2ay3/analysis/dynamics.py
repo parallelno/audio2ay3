@@ -80,6 +80,7 @@ def attach_amp_contours(
                 pitch_hz=note.pitch_hz,
                 velocity=note.velocity,
                 amp_contour=contour,
+                program=note.program,
             )
         )
     return out
