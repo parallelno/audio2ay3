@@ -221,5 +221,21 @@ class Ay3Emulator:
         return raw
 
     def render_song(self, song) -> np.ndarray:
-        """Render a :class:`audio2ay3.ymformat.model.YmSong` to PCM."""
-        return self.render_frames(song.frames, song.master_clock, song.frame_rate)
+        """Render a :class:`audio2ay3.ymformat.model.YmSong` to PCM.
+
+        A dual-AY song (``n_chips == 2``) renders each chip's 16-register block independently
+        through the same core and sums the two PCM streams, scaling by the chip count so the
+        peak stays in range before the renderer's final normalisation.
+        """
+        n_chips = max(1, int(getattr(song, "n_chips", 1)))
+        if n_chips <= 1:
+            return self.render_frames(song.frames, song.master_clock, song.frame_rate)
+        mixes = [
+            self.render_frames(block, song.master_clock, song.frame_rate)
+            for block in song.per_chip_frames()
+        ]
+        length = min(m.shape[0] for m in mixes)
+        mix = np.zeros(length, dtype=np.float64)
+        for m in mixes:
+            mix += m[:length]
+        return (mix / n_chips).astype(np.float32)

@@ -112,7 +112,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is an **experimental** pure-PyTorch multi-instrument backend that installs on native Windows, but transcribed more sparsely than `basic-pitch` in testing and is slow — not recommended (GPL-3.0 model installed separately; see the README). `onsets-frames` is reserved and raises a clear error. |
 | `--clock HZ` | `1773400` | AY master clock (default ≈ 1.7734 MHz, ZX Spectrum). |
 | `--frame-rate HZ` | `50` | Replay frame rate. |
-| `--chips N` | `1` | Number of AY chips. **Experimental:** accepted and stored, but dual-AY arrangement is not yet implemented, so only the first chip is rendered today. |
+| `--chips N` | `1` | Number of AY chips: `1` (3 tone channels) or `2` (dual-AY, 6 tone channels). With two chips the melody spreads across four channels instead of one or two, bass keeps its own channel, and percussion is isolated on the second chip. `convert` writes chip 0 to the named `.ym` and chip 1 to `<name>.ay2.ym` (the YM format has no standard dual-PSG container); `preview` renders both chips into one audio file. |
 | `--no-gpu` | off | Force CPU for the neural models (they otherwise auto-detect). |
 | `--seed N` | `0` | Deterministic seed for the neural stages. |
 
@@ -225,16 +225,17 @@ audio2ay3 preview samples\long\Goblins_Lair.mp3 --wav --duration 20 --explain
 With `--explain`, `convert`/`preview` print two blocks after the `ok:` line:
 
 1. **Song stats** — register-level facts about the arranged `.ym`: a polyphony histogram (how many
-   of the audible tone voices sound per frame), tone-on percentage per channel A/B/C, noise frame
-   count, the number of distinct bass tone periods on channel A, amplitude-change activity per
-   channel, and the count of distinct amplitude levels used.
+   of the audible tone voices sound per frame), tone-on percentage per channel A/B/C (A..F on
+   dual-AY), noise frame count, the number of distinct bass tone periods on channel A,
+   amplitude-change activity per channel, and the count of distinct amplitude levels used.
 2. **Voice contention** — how the deterministic allocator coped with the transcription: how many
    melodic notes were silenced, note-frames demanded vs sounded, how many were dropped for lack of
    a free channel vs. lost to a drum hit on the shared channel, plus an estimate of what a second
    AY chip would recover.
 
 These are diagnostics, not warnings — they help explain why a dense passage loses notes (a 3-voice
-chip can only sound three tones at once) and quantify how much a dual-AY setup would help.
+chip can only sound three tones at once) and quantify how much a dual-AY setup would help — which
+you can then turn on with `--chips 2`.
 
 ---
 

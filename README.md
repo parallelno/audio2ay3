@@ -273,7 +273,10 @@ hardware-legal `.ym` files following the input's melody and hits. Still to come:
   bass/salience bias are basic today), smoothing/anti-jitter, envelope/buzzer timbres,
   octave-folding sweet spots, and named quality profiles. This is where fidelity is won.
 - **Phase 6 — performance:** GPU spectral path, parallel/segmented analysis, chunked emulation.
-- **Phase 7 — scalability:** `--frame-rate 100` and `--chips 2` (dual-AY, 6 voices).
+- **Phase 7 — scalability:** `--chips 2` (dual-AY, 6 tone channels) is implemented — bass keeps
+  its own channel, percussion is isolated on the second chip, and the melody spreads across four
+  channels. `convert` writes chip 1 to `<name>.ay2.ym`; `preview` mixes both chips. `--frame-rate
+  100` is also available.
 - **Phase 8 — hardening:** edge-case inputs, richer CLI UX, perceptual regression metrics in CI.
 - **Alternate backends:** `--transcription mt3 / onsets-frames` and `--separation spleeter` are
   recognised but not wired (they raise a clear "not available" error).

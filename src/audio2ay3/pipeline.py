@@ -49,6 +49,9 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     """Turn a transcription into a hardware-legal :class:`YmSong` (no neural deps)."""
     clock = cfg.chip.master_clock_hz
     frame_rate = cfg.chip.frame_rate_hz
+    n_chips = cfg.chip.n_chips
+    tpc = cfg.chip.tone_channels  # tone channels per chip (3 on a real AY)
+    n_channels = cfg.chip.total_tone_channels  # 3 for a single AY, 6 for dual-AY
 
     end_s = max(
         tr.duration_s,
@@ -59,11 +62,18 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     )
     n_frames = frames_for_duration(end_s, frame_rate)
 
-    builder = RegisterStreamBuilder(n_frames)
-    # Bass owns a dedicated channel; the melodic allocator fills the channels left free.
+    # One independent 16-register stream per chip; a global channel routes to (chip, local ch).
+    builders = [RegisterStreamBuilder(n_frames) for _ in range(n_chips)]
+
+    def route(global_ch: int) -> tuple[RegisterStreamBuilder, int]:
+        return builders[global_ch // tpc], global_ch % tpc
+
+    # Bass owns a dedicated channel; the melodic allocator fills the channels left free. With a
+    # second chip the melody spreads over four channels instead of one or two, which is the win.
     bass_voices, reserved = place_bass(tr.bass_notes, frame_rate, n_frames)
     assignment = allocate_voices(
-        tr.notes, frame_rate, n_frames, reserved=reserved, arpeggiate=cfg.arpeggio
+        tr.notes, frame_rate, n_frames, reserved=reserved,
+        n_channels=n_channels, arpeggiate=cfg.arpeggio,
     )
     for f in range(n_frames):
         ch = reserved[f]
@@ -77,14 +87,15 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     vib = cfg.vibrato
     # Frames a drum decay owns the shared noise generator, so a breath chiff defers to it.
     drum_busy = percussion_busy_frames(tr.percussion, frame_rate, n_frames)
-    cur_note: list[int | None] = [None, None, None]
-    age = [0, 0, 0]
+    cur_note: list[int | None] = [None] * n_channels
+    age = [0] * n_channels
     for f in range(n_frames):
-        for ch in range(3):
+        for ch in range(n_channels):
             voice = assignment[f][ch]
             if voice is None:
                 cur_note[ch] = None
                 continue
+            builder, local_ch = route(ch)
             if voice.note_id != cur_note[ch]:
                 cur_note[ch] = voice.note_id
                 age[ch] = 0
@@ -130,7 +141,7 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
                 level = peak
             else:
                 level = env.level(age[ch], peak)
-            builder.set_tone(f, ch, tone_period, level)
+            builder.set_tone(f, local_ch, tone_period, level)
             # Breath: a short noise chiff at the attack of flute/pipe/reed voices imitates the
             # instrument's air, but only when no drum is using the shared noise generator.
             if (
@@ -139,14 +150,25 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
                 and age[ch] < _BREATH_ATTACK_FRAMES
                 and not drum_busy[f]
             ):
-                builder.enable_noise(f, ch, _BREATH_NOISE_PERIOD)
+                builder.enable_noise(f, local_ch, _BREATH_NOISE_PERIOD)
 
-    apply_percussion(builder, tr.percussion, frame_rate, n_frames)
+    # Percussion steals the last tone channel: channel C on a single chip (the historical
+    # placement), or the second chip's channel C on dual-AY, isolating drums from the melody.
+    perc_builder, perc_local = route(n_channels - 1)
+    apply_percussion(
+        perc_builder, tr.percussion, frame_rate, n_frames, channel=perc_local
+    )
 
+    frames = (
+        builders[0].finish()
+        if n_chips == 1
+        else np.concatenate([b.finish() for b in builders], axis=1)
+    )
     return YmSong(
-        frames=builder.finish(),
+        frames=frames,
         master_clock=clock,
         frame_rate=frame_rate,
+        n_chips=n_chips,
         version="YM6",
         name=name,
         author="audio2ay3",

@@ -210,9 +210,14 @@ def allocate_voices(
     n_frames: int,
     reserved: list[int | None] | None = None,
     *,
+    n_channels: int = N_CHANNELS,
     arpeggiate: bool = False,
 ) -> list[list[Voice | None]]:
     """Return ``assignment[frame][channel]`` of :class:`Voice` or ``None`` (silent).
+
+    *n_channels* is the number of tone channels to fill (3 for a single AY, 6 for dual-AY); the
+    allocator's continuity/priority policy is identical regardless of width, it simply has more
+    channels to spread the melody across.
 
     When *reserved* is given, ``reserved[f]`` names a channel that is off-limits to melodic
     notes in frame *f* (because :func:`place_bass` owns it that frame); the remaining channels
@@ -227,16 +232,16 @@ def allocate_voices(
     )
 
     assignment: list[list[Voice | None]] = [
-        [None, None, None] for _ in range(n_frames)
+        [None] * n_channels for _ in range(n_frames)
     ]
-    prev_ids: list[int | None] = [None, None, None]
+    prev_ids: list[int | None] = [None] * n_channels
 
     for f in range(n_frames):
         blocked = reserved[f] if reserved is not None else None
-        usable = [ch for ch in range(N_CHANNELS) if ch != blocked]
+        usable = [ch for ch in range(n_channels) if ch != blocked]
         active = active_by_frame[f]
         by_id = {s.note_id: s for s in active}
-        current: list[Voice | None] = [None, None, None]
+        current: list[Voice | None] = [None] * n_channels
         taken: set[int] = set()
 
         # 1) Continuity: keep last frame's note on its (still-usable) channel if it sounds on.

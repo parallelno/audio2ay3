@@ -21,6 +21,17 @@ def _default_out(inp: str, ext: str) -> str:
     return str(Path("build") / (Path(inp).stem + ext))
 
 
+def _write_multichip(song, out: str, ym_writer) -> list[str]:
+    """Write one ``.ym`` per chip (chip 0 to *out*, chip 1 to ``<name>.ay2.ym``)."""
+    base = Path(out)
+    paths: list[str] = []
+    for i, chip_song in enumerate(song.per_chip_songs()):
+        path = base if i == 0 else base.with_name(f"{base.stem}.ay{i + 1}{base.suffix}")
+        ym_writer.write(chip_song, str(path))
+        paths.append(str(path))
+    return paths
+
+
 def _build_run_config(args: argparse.Namespace) -> RunConfig:
     from .config import AmpEnvelope, Vibrato
 
@@ -102,8 +113,13 @@ def cmd_convert(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 3
 
-    ym_writer.write(song, out)
-    print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
+    if song.n_chips > 1:
+        out_paths = _write_multichip(song, out, ym_writer)
+        print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> "
+              f"{', '.join(out_paths)}")
+    else:
+        ym_writer.write(song, out)
+        print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
     if explain:
         from .explain import describe_song
 
@@ -172,7 +188,9 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--clock", type=int, default=None, help="master clock (Hz)")
     sp.add_argument("--frame-rate", type=int, default=None, dest="frame_rate",
                     help="replay frame rate (Hz)")
-    sp.add_argument("--chips", type=int, default=None, help="number of AY chips (1 or 2)")
+    sp.add_argument("--chips", type=int, default=None, choices=[1, 2],
+                    help="number of AY chips: 1 (3 channels) or 2 (dual-AY, 6 channels; "
+                         "writes chip 1 to <name>.ay2.ym)")
     sp.add_argument("--no-gpu", action="store_true", dest="no_gpu",
                     help="force CPU for neural models")
     sp.add_argument("--seed", type=int, default=0, help="deterministic seed")

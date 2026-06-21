@@ -20,6 +20,10 @@ class ChipConfig:
     n_chips: int = 1  # 1 or 2 (dual-AY)
     tone_channels: int = 3  # per chip
 
+    def __post_init__(self) -> None:
+        if self.n_chips not in (1, 2):
+            raise ValueError(f"n_chips must be 1 or 2, got {self.n_chips}")
+
     @property
     def total_tone_channels(self) -> int:
         return self.n_chips * self.tone_channels
