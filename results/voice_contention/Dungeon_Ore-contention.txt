@@ -1,0 +1,15 @@
+Voice contention (single AY: A=bass, B/C=melody, C also drums):
+  melodic notes:             1277
+  notes never sounded:       450 (35.2%)
+  note-frames demanded:      10322
+  note-frames sounded:       6327 (61.3%)
+  dropped, no free channel:  3099 (30.0%)
+  dropped, drum stole C:     896 (8.7%)
+  frames with contention:    1657 (33.0%)
+  bass holds channel A:      1569 (31.2%)
+  drums steal channel C:     1499 (29.8%)
+  simultaneous melodic demand: 0:1259 1:1203 2:947 3:549 4:455 5+:615
+  estimate with a 2nd AY chip (4 melodic channels, drums isolated):
+    note-frames would sound: 9024 (87.4%)
+    notes still silent:      158 (12.4%)
+    recovered vs single AY:  +2697 note-frames (26.1% of demand)
