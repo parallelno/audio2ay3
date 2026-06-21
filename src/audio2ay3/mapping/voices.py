@@ -35,6 +35,9 @@ class Voice:
     # ``None`` when the note carries no contour and the arranger should use its synthetic
     # envelope instead.
     amp_scale: float | None = None
+    # General-MIDI program of the source note (``None`` for Basic Pitch / synthetic), so the
+    # arranger can hold a sustained instrument legato instead of imposing a struck decay.
+    program: int | None = None
 
 
 @dataclass
@@ -95,6 +98,19 @@ def _program_rank(program: int | None) -> int:
     if program in _PAD_PROGRAMS:
         return 2
     return 1
+
+
+# GM families that ring on naturally (bowed/blown/electronically held), so a long note should
+# stay at its source level instead of decaying like a plucked string: Organ (16-23) plus the
+# continuous span Strings/Ensemble/Brass/Reed/Pipe/Synth-Lead/Synth-Pad/Synth-FX (40-103).
+# Everything else (Piano, Chromatic Percussion, Guitar, Bass, Ethnic, Percussive) and ``None``
+# (Basic Pitch) keeps the struck attack-and-decay the arranger applied before.
+_SUSTAINED_PROGRAMS = frozenset(set(range(16, 24)) | set(range(40, 104)))
+
+
+def is_sustained_program(program: int | None) -> bool:
+    """Whether a GM *program* is a held/legato instrument (no natural per-note decay)."""
+    return program is not None and program in _SUSTAINED_PROGRAMS
 
 
 def _spans_from_notes(
@@ -160,7 +176,9 @@ def place_bass(
         # Negative note-id namespace keeps bass notes distinct from melodic notes, so a bass
         # note and a melodic note that share an index can never be mistaken for one held note
         # when channel A flips between them (the arranger keys its envelope off note identity).
-        bass_voices[f] = Voice(s.pitch_hz, s.velocity, -(s.note_id + 1), _contour_scale(s, f))
+        bass_voices[f] = Voice(
+            s.pitch_hz, s.velocity, -(s.note_id + 1), _contour_scale(s, f), s.program
+        )
         reserved[f] = channel
     return bass_voices, reserved
 
@@ -199,7 +217,9 @@ def allocate_voices(
             pid = prev_ids[ch]
             if pid is not None and pid in by_id:
                 s = by_id[pid]
-                current[ch] = Voice(s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f))
+                current[ch] = Voice(
+                    s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program
+                )
                 taken.add(pid)
 
         # 2) Fill free usable channels with the highest-priority unplaced notes.
@@ -208,7 +228,9 @@ def allocate_voices(
             (s for s in active if s.note_id not in taken), key=_priority
         )
         for ch, s in zip(free, remaining):
-            current[ch] = Voice(s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f))
+            current[ch] = Voice(
+                s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program
+            )
 
         assignment[f] = current
         prev_ids = [v.note_id if v is not None else None for v in current]

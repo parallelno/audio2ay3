@@ -159,6 +159,26 @@ def test_arrange_flat_contour_still_decays_for_liveliness():
     assert amp[-1] == 13  # settles at the sustain level (0.6 of peak in the log DAC)
 
 
+def test_arrange_sustained_instrument_holds_legato_without_struck_decay():
+    # The same held note as the decay test, but tagged with a sustained GM family (program 48 =
+    # string ensemble), must keep its level for the whole note instead of decaying like a pluck,
+    # so a bowed/legato line stays connected rather than fragmenting into short, isolated notes.
+    note = Note(0.0, 0.3, 440.0, velocity=1.0, amp_contour=(1.0,) * 15, program=48)
+    song = arrange(Transcription(notes=[note]), RunConfig())  # no bass -> channel A (R8)
+    amp = song.frames[:15, 8].astype(int).tolist()
+    assert amp[0] == 15  # struck at peak
+    assert set(amp) == {15}  # held flat for the whole note -> no struck decay
+
+
+def test_arrange_sustained_instrument_without_contour_holds_flat_at_peak():
+    # A sustained instrument that carries no source contour must still hold (not decay), unlike
+    # the program-less liveliness path that falls to the synthetic struck envelope.
+    note = Note(0.0, 0.3, 440.0, velocity=1.0, program=73)  # flute, no contour
+    song = arrange(Transcription(notes=[note]), RunConfig())
+    amp = song.frames[:15, 8].astype(int).tolist()
+    assert set(amp) == {15}  # legato hold, no per-note decay
+
+
 
 
 def test_arrange_ignores_contour_when_envelope_disabled():

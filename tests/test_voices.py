@@ -8,7 +8,13 @@ Basic Pitch leaves it ``None``, which must preserve the old loudness-only behavi
 from __future__ import annotations
 
 from audio2ay3.analysis.model import Note
-from audio2ay3.mapping.voices import _priority, _program_rank, _Span, allocate_voices
+from audio2ay3.mapping.voices import (
+    _priority,
+    _program_rank,
+    _Span,
+    allocate_voices,
+    is_sustained_program,
+)
 
 
 def test_program_rank_promotes_leads_and_demotes_pads():
@@ -48,3 +54,20 @@ def test_allocator_keeps_the_lead_when_channels_are_scarce():
     assert 660.0 in placed  # the lead is kept
     assert 440.0 in placed  # the louder pad takes the other free channel
     assert 550.0 not in placed  # the quieter pad is the one dropped, not the lead
+
+
+def test_is_sustained_program_classifies_held_vs_struck_families():
+    # Held/legato families ring on (no per-note decay); struck/plucked families and unknown keep
+    # the arranger's struck attack-and-decay.
+    assert is_sustained_program(16)  # Organ
+    assert is_sustained_program(40)  # Violin
+    assert is_sustained_program(48)  # String ensemble
+    assert is_sustained_program(56)  # Trumpet
+    assert is_sustained_program(73)  # Flute
+    assert is_sustained_program(81)  # Synth lead
+    assert is_sustained_program(89)  # Synth pad
+    assert not is_sustained_program(0)  # Piano -> struck
+    assert not is_sustained_program(8)  # Glockenspiel -> struck
+    assert not is_sustained_program(24)  # Guitar -> plucked
+    assert not is_sustained_program(34)  # Electric bass -> struck
+    assert not is_sustained_program(None)  # Basic Pitch / unknown -> struck (unchanged)

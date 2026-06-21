@@ -28,7 +28,7 @@ from .encode import (
     velocity_to_amplitude,
 )
 from .encode.quantize import frames_for_duration
-from .mapping import allocate_voices, apply_percussion, place_bass
+from .mapping import allocate_voices, apply_percussion, is_sustained_program, place_bass
 from .ymformat.model import YmSong
 
 
@@ -78,12 +78,18 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             # The allocator already decided this voice should sound; never let velocity
             # rounding silence it — floor a placed note to the quietest audible amplitude.
             peak = max(1, velocity_to_amplitude(voice.velocity))
+            sustained = is_sustained_program(voice.program)
             if env.enabled and voice.amp_scale is not None:
                 if age[ch] == 0:
                     # Strike each note's first frame at its full (velocity-scaled) peak so every
                     # onset has a sharp attack. Without this, the smoothed source contour blurs
                     # fast repeated notes into one sustained tone (few strong onsets).
                     level = peak
+                elif sustained:
+                    # Held instrument (strings/brass/reed/pipe/organ/synth lead+pad): follow the
+                    # source loudness but never impose the synthetic struck decay, so a legato
+                    # line stays connected instead of fragmenting into short, isolated notes.
+                    level = max(1, scale_amplitude(peak, voice.amp_scale))
                 else:
                     # Shape the source loudness by the synthetic attack/decay so every note keeps
                     # a struck character even where the (whole-stem) contour is flat — otherwise
@@ -91,6 +97,10 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
                     # logarithmic domain so below-peak frames aren't crushed into near-silence.
                     shaped = voice.amp_scale * env.factor(age[ch])
                     level = max(1, scale_amplitude(peak, shaped))
+            elif env.enabled and sustained:
+                # Held instrument with no source contour: hold flat at the note's peak so it
+                # sustains for its whole length rather than decaying like a plucked note.
+                level = peak
             else:
                 level = env.level(age[ch], peak)
             builder.set_tone(f, ch, tone_period, level)
