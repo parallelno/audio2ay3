@@ -145,10 +145,26 @@ def cmd_preview(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_setup_yourmt3(args: argparse.Namespace) -> int:
+    from .analysis.yourmt3_setup import _DEFAULT_REPO_URL, setup_yourmt3
+
+    try:
+        setup_yourmt3(
+            target_dir=getattr(args, "dir", None),
+            repo_url=getattr(args, "repo_url", None) or _DEFAULT_REPO_URL,
+            model_name=args.model,
+            force=getattr(args, "force", False),
+        )
+    except (RuntimeError, ValueError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 3
+    return 0
+
+
 def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--separation", choices=["demucs", "spleeter", "none"],
                     default="demucs", help="neural source separation backend")
-    sp.add_argument("--transcription", choices=["basic-pitch", "mt3", "onsets-frames"],
+    sp.add_argument("--transcription", choices=["basic-pitch", "mt3", "yourmt3", "onsets-frames"],
                     default="basic-pitch", help="neural transcription backend")
     sp.add_argument("--clock", type=int, default=None, help="master clock (Hz)")
     sp.add_argument("--frame-rate", type=int, default=None, dest="frame_rate",
@@ -211,6 +227,20 @@ def build_parser() -> argparse.ArgumentParser:
     _add_analysis_args(pr)
     _add_arrangement_args(pr)
     pr.set_defaults(func=cmd_preview)
+
+    sy = sub.add_parser(
+        "setup-yourmt3",
+        help="Fetch the optional YourMT3+ transcription backend (GPL-3.0) into a local cache",
+    )
+    sy.add_argument("--dir", default=None,
+                    help="checkout directory (default: a per-user cache dir)")
+    sy.add_argument("--repo-url", dest="repo_url", default=None,
+                    help="clone URL (default: the YourMT3 HuggingFace Space)")
+    sy.add_argument("--model", default="YPTF.MoE+Multi (noPS)",
+                    help="model variant to verify a checkpoint for")
+    sy.add_argument("--force", action="store_true",
+                    help="update an existing checkout (git pull) instead of skipping")
+    sy.set_defaults(func=cmd_setup_yourmt3)
 
     return p
 

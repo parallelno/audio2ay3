@@ -97,7 +97,7 @@ hardware-legal `.ym` register stream. Needs the `neural` and `audio` extras.
 
 ```
 audio2ay3 convert <input-audio> [-o OUT]
-                  [--separation {demucs,spleeter,none}] [--transcription {basic-pitch,mt3,onsets-frames}]
+                  [--separation {demucs,spleeter,none}] [--transcription {basic-pitch,mt3,yourmt3,onsets-frames}]
                   [--clock HZ] [--frame-rate HZ] [--chips N] [--no-gpu] [--seed N]
                   [--no-amp-envelope] [--explain]
 ```
@@ -109,7 +109,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `input` | — | Input audio (WAV/FLAC/OGG; MP3 if your libsndfile build supports it). |
 | `-o`, `--output` | `build/<name>.ym` | Output `.ym` path. |
 | `--separation` | `demucs` | Source-separation backend. `none` skips separation — use it for already-instrumental input. `spleeter` is recognised but not implemented (raises a clear error). |
-| `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only — see the README). `onsets-frames` is reserved and raises a clear error. |
+| `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is MT3-class multi-instrument that runs on **native Windows** (pure PyTorch; GPL-3.0 model installed separately — see the README). `onsets-frames` is reserved and raises a clear error. |
 | `--clock HZ` | `1773400` | AY master clock (default ≈ 1.7734 MHz, ZX Spectrum). |
 | `--frame-rate HZ` | `50` | Replay frame rate. |
 | `--chips N` | `1` | Number of AY chips. **Experimental:** accepted and stored, but dual-AY arrangement is not yet implemented, so only the first chip is rendered today. |
@@ -146,6 +146,40 @@ audio2ay3 convert samples\long\Goblins_Lair.mp3 --vibrato --breath --arpeggio
 
 # MT3 multi-instrument backend (Linux/WSL, AUDIO2AY3_MT3_CHECKPOINT must be set)
 python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.ym --transcription mt3
+
+# YourMT3+ multi-instrument backend (native Windows OK). Run `audio2ay3 setup-yourmt3` once to
+# fetch the GPL-3.0 model into a per-user cache; then no env vars are needed.
+python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3
+```
+
+---
+
+## `setup-yourmt3`
+
+Fetch the optional **YourMT3+** transcription backend (GPL-3.0) into a per-user cache directory so
+`--transcription yourmt3` works without manual cloning or env vars. Needs `git` (and `git-lfs` for
+the checkpoints); it does **not** import torch. The GPL model code is fetched onto your machine at
+runtime and is never bundled into this MIT project.
+
+```
+audio2ay3 setup-yourmt3 [--dir PATH] [--repo-url URL] [--model NAME] [--force]
+```
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `--dir PATH` | per-user cache | Checkout location. `AUDIO2AY3_YOURMT3_DIR` overrides the default at convert time. |
+| `--repo-url URL` | YourMT3 HuggingFace Space | Clone URL. The Space colocates `model_helper.py` + `amt/` and carries the LFS checkpoints. Use this to point at a mirror/fork. |
+| `--model NAME` | `YPTF.MoE+Multi (noPS)` | Model variant whose checkpoint presence is verified after cloning. |
+| `--force` | off | Update an existing checkout (`git pull`) instead of skipping. |
+
+The command clones the repo, verifies that `model_helper.py` + `amt/src` are present, and reports
+whether the chosen variant's checkpoint was found (downloading large checkpoints may require
+git-lfs or a manual step it points you to). Exit code `3` on failure (e.g. `git` missing).
+
+```powershell
+audio2ay3 setup-yourmt3                      # default cache dir + recommended variant
+audio2ay3 setup-yourmt3 --dir D:\models\ymt3 # custom location
+audio2ay3 setup-yourmt3 --force              # update an existing checkout
 ```
 
 ---

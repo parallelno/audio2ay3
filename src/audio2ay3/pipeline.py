@@ -171,8 +171,8 @@ def convert(
 def _build_transcription(path: str, cfg: RunConfig) -> Transcription:
     """Run the neural front-end into a :class:`Transcription` (everything before ``arrange``)."""
     audio, sr = load_audio(path, cfg.render_sr)
-    if cfg.transcription == "mt3":
-        return _build_transcription_mt3(audio, sr, cfg)
+    if cfg.transcription in ("mt3", "yourmt3"):
+        return _build_transcription_multitrack(audio, sr, cfg)
     stems = separate_stems(audio, sr, cfg.separation)
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     # Follow each note's real loudness shape from its own stem so held notes sustain and plucks
@@ -198,15 +198,15 @@ def _build_transcription(path: str, cfg: RunConfig) -> Transcription:
     return tr
 
 
-def _build_transcription_mt3(audio: np.ndarray, sr: int, cfg: RunConfig) -> Transcription:
-    """MT3 path: one multitrack pass yields notes, bass, and drums together (no separation).
+def _build_transcription_multitrack(audio: np.ndarray, sr: int, cfg: RunConfig) -> Transcription:
+    """MT3 / YourMT3+ path: one multitrack pass yields notes, bass, and drums together.
 
-    MT3 emits General-MIDI note events for every instrument at once, so unlike the Basic Pitch
-    path there are no Demucs stems to isolate: :func:`transcribe` already routes drums to
+    Both backends emit General-MIDI note events for every instrument at once, so unlike the Basic
+    Pitch path there are no Demucs stems to isolate: :func:`transcribe` already routes drums to
     percussion and the GM bass family to ``bass_notes``. Loudness contours therefore follow the
     full mix (the only signal available), still gated by ``--no-amp-envelope``.
     """
-    tr = transcribe(audio, sr, "mt3", cfg.chip.frame_rate_hz)
+    tr = transcribe(audio, sr, cfg.transcription, cfg.chip.frame_rate_hz)
     if cfg.amp_envelope.enabled:
         tr.notes = attach_amp_contours(tr.notes, audio, sr, cfg.chip.frame_rate_hz)
         tr.bass_notes = attach_amp_contours(tr.bass_notes, audio, sr, cfg.chip.frame_rate_hz)

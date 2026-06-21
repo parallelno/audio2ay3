@@ -141,6 +141,61 @@ python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-mt3.y
 > done
 > ```
 
+### YourMT3+ transcription (`--transcription yourmt3`) — MT3-class, runs on native Windows
+
+[YourMT3+](https://github.com/mimbres/YourMT3) (mimbres, MLSP&nbsp;2024) is MT3-class
+multi-instrument transcription rebuilt on a **pure PyTorch** stack — `torch`, `torchaudio`,
+`lightning`, `transformers`, `einops`, `mido`, `librosa` — with **no JAX / t5x / tensorflow-text**.
+That single difference means it `pip install`s on **native Windows** (the wheel that blocks MT3 is
+gone). One pass yields pitched notes, bass, and drums together with General-MIDI identity, so it
+self-routes exactly like the MT3 path. Fully opt-in; never touched by the default `convert` or the
+test suite.
+
+> **License — read before using.** YourMT3 is **GPL-3.0**, while audio2ay3 is **MIT**. To keep
+> GPL-licensed code out of this MIT tree, the model is treated as an *optional, user-installed*
+> backend: **we do not vendor or bundle any YourMT3 code.** The setup helper (and the manual route)
+> fetch the GPL repo onto *your* machine at runtime; our thin adapter
+> (`audio2ay3/analysis/_yourmt3_infer.py`) imports it at runtime. Distributing your own combined
+> build is your responsibility under the GPL.
+
+```powershell
+# Native Windows (or Linux/WSL), Python 3.11/3.12. The pip stack is pure PyTorch:
+pip install -e ".[yourmt3]"                       # torch/torchaudio/lightning/transformers/...
+
+# Easy path: clone + wire up the GPL backend into a per-user cache (needs git + git-lfs):
+python -m audio2ay3 setup-yourmt3
+# ...then just run it (no env vars needed — the cache dir is auto-detected):
+python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3
+```
+
+`setup-yourmt3` clones the YourMT3 **HuggingFace Space** (it colocates `model_helper.py` + `amt/`
+and carries the LFS checkpoints) into a per-user cache, verifies the layout, and reports if a
+checkpoint still needs downloading. Flags: `--dir` (checkout location), `--repo-url` (mirror/fork),
+`--model` (variant to verify, default `YPTF.MoE+Multi (noPS)`), `--force` (`git pull` an existing
+checkout). It only needs `git`/`git-lfs` — no torch.
+
+<details><summary>Manual setup (alternative to <code>setup-yourmt3</code>)</summary>
+
+```powershell
+# Clone the GPL-3.0 model code separately (NOT installed by the extra above):
+git clone https://huggingface.co/spaces/mimbres/YourMT3
+# Download a checkpoint into the checkout per its README / colab, then point us at both:
+setx AUDIO2AY3_YOURMT3_DIR        "C:\path\to\YourMT3"
+setx AUDIO2AY3_YOURMT3_CHECKPOINT "mc13_256_g4_all_v7_mt3f_sqr_rms_moe_wf4_n8k2_silu_rope_rp_b36_nops@last.ckpt"
+# Optional: pick a variant (default is the recommended "YPTF.MoE+Multi (noPS)"):
+setx AUDIO2AY3_YOURMT3_MODEL      "YPTF.MoE+Multi (noPS)"
+
+python -m audio2ay3 convert samples/long/Goblins_Lair.mp3 -o build/goblins-ymt3.ym --transcription yourmt3
+```
+
+</details>
+
+> `AUDIO2AY3_YOURMT3_DIR` always overrides the cache dir when set. CPU inference works (fp32, slow);
+> a CUDA GPU uses fp16 automatically. The checkpoint files are large — `setup-yourmt3` pulls them via
+> git-lfs when available, otherwise follow the upstream repo's download instructions. If
+> `model_helper.py`/`amt/src` aren't importable from the checkout, the run fails with a clear message
+> naming the fix.
+
 ### 3. Verify the install
 
 ```powershell

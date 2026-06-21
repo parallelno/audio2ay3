@@ -38,6 +38,20 @@ neural = ["demucs", "basic-pitch>=0.4.0", "onnxruntime", "soundfile>=0.12"]
 # matter (t5x/jax/flax break across releases); prefer following that colab's exact pins.
 # This extra is just the convenience subset that is on PyPI; you still need the git install above.
 mt3 = ["jax", "note-seq", "seqio", "t5", "gin-config", "tensorflow", "librosa"]
+# YourMT3+ multi-instrument transcription (mimbres). MT3-class quality on a *pure PyTorch* stack
+# (no JAX/t5x/tensorflow-text), so unlike the mt3 extra it pip-installs on NATIVE WINDOWS. Fully
+# opt-in; never touched by the default conversion or the test suite. This extra is only the
+# pip-installable runtime stack — the model code itself is GPL-3.0 and is NOT bundled here (this
+# project is MIT). You clone it yourself and point us at it, mirroring the mt3 backend:
+#   pip install -e ".[yourmt3]"                                   # the PyTorch runtime below
+#   git clone https://github.com/mimbres/YourMT3                  # GPL-3.0 model code (separate)
+#   set AUDIO2AY3_YOURMT3_DIR=<the YourMT3 checkout>              # download a checkpoint per its README
+#   set AUDIO2AY3_YOURMT3_CHECKPOINT=<checkpoint@*.ckpt>          # optional; preset has a default
+# CPU inference works (fp32, slow); GPU uses fp16. See audio2ay3/analysis/_yourmt3_infer.py.
+yourmt3 = [
+    "torch", "torchaudio", "lightning>=2.2.1", "transformers==4.45.1", "numpy==1.26.4",
+    "einops", "mido", "librosa", "pretty_midi",
+]
 dev = ["pytest>=8", "pytest-xdist", "ruff", "mypy"]
 
 [project.scripts]

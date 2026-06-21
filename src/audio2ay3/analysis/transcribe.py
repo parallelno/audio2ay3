@@ -7,6 +7,10 @@ Backends are imported lazily and reduce to the same neutral IR:
 - ``mt3`` (Google Magenta) — heavy multitrack model. A single pass yields pitched notes, bass,
   and drums together with General-MIDI instrument identity, so it routes its own percussion and
   bass here (see :func:`note_sequence_to_transcription`). Reserved behind the ``[mt3]`` extra.
+- ``yourmt3`` (mimbres, GPL-3.0) — MT3-class multitrack on a pure-PyTorch stack (installs on
+  native Windows). Same single-pass multi-instrument hand-off as ``mt3``; the heavy driver lives
+  in :mod:`._yourmt3_infer` and is an optional, user-installed backend (the GPL model code is not
+  bundled). Reserved behind the ``[yourmt3]`` extra.
 - ``onsets-frames`` (Google Magenta) — still reserved for the deeper-analysis phase.
 """
 
@@ -36,6 +40,8 @@ def transcribe(
         return _transcribe_basic_pitch(audio, sr)
     if mode == "mt3":
         return _transcribe_mt3(audio, sr, frame_rate_hz)
+    if mode == "yourmt3":
+        return _transcribe_yourmt3(audio, sr, frame_rate_hz)
     if mode == "onsets-frames":
         raise NotImplementedError(
             "The 'onsets-frames' backend is planned for the deeper-analysis phase; "
@@ -126,7 +132,7 @@ def _drum_kind_for_midi(pitch: int) -> PercussionKind:
 
 
 def note_sequence_to_transcription(ns, frame_rate_hz: int = 50) -> Transcription:
-    """Convert an MT3 (or Onsets-and-Frames) ``NoteSequence`` into the neutral IR.
+    """Convert an MT3/YourMT3 (or Onsets-and-Frames) ``NoteSequence`` into the neutral IR.
 
     ``ns`` is duck-typed: it needs ``total_time`` and an iterable ``notes`` whose items expose
     ``pitch`` (MIDI), ``start_time``, ``end_time``, ``velocity`` (0-127), ``program`` (GM) and
@@ -178,4 +184,18 @@ def _transcribe_mt3(audio: np.ndarray, sr: int, frame_rate_hz: int) -> Transcrip
     from . import _mt3_infer
 
     ns = _mt3_infer.transcribe_mt3(audio, sr)
+    return note_sequence_to_transcription(ns, frame_rate_hz)
+
+
+def _transcribe_yourmt3(audio: np.ndarray, sr: int, frame_rate_hz: int) -> Transcription:
+    """Run YourMT3+ multitrack transcription and route its NoteSequence into the IR.
+
+    The pure-PyTorch YourMT3 stack and its inference glue live in :mod:`._yourmt3_infer`; it raises
+    a clear ``RuntimeError`` when the ``[yourmt3]`` extra, the GPL model checkout, or a checkpoint
+    is missing. The output MIDI is parsed into the same duck-typed ``NoteSequence`` the MT3 path
+    uses, so it reuses :func:`note_sequence_to_transcription` unchanged.
+    """
+    from . import _yourmt3_infer
+
+    ns = _yourmt3_infer.transcribe_yourmt3(audio, sr)
     return note_sequence_to_transcription(ns, frame_rate_hz)
