@@ -74,6 +74,8 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         vibrato=Vibrato(enabled=getattr(args, "vibrato", False)),
         breath=getattr(args, "breath", False),
         arpeggio=getattr(args, "arpeggio", False),
+        stems_dir=Path(args.stems_dir) if getattr(args, "stems_dir", None) else None,
+        noise_volume=getattr(args, "drum_volume", 1.0),
     )
 
 
@@ -224,6 +226,10 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--no-progress", action="store_true", dest="no_progress",
                     help="disable the per-stage progress bar")
     sp.add_argument("--seed", type=int, default=0, help="deterministic seed")
+    sp.add_argument("--stems-dir", dest="stems_dir", default=None,
+                    help="directory of pre-separated stems; when given, Demucs is skipped and "
+                         "stems are loaded from <stems-dir>/<song>/<song> (Synth|Bass|Drums).mp3 "
+                         "directly (--separation is ignored)")
 
 
 def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
@@ -238,6 +244,10 @@ def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
                     help="cycle squeezed chord tones on one channel instead of dropping them")
     sp.add_argument("--explain", action="store_true",
                     help="print register-level diagnostics for the arranged song")
+    sp.add_argument("--noise-volume", type=float, default=1.0, dest="noise_volume",
+                    metavar="SCALE",
+                    help="noise channel volume as a linear scale (default 1.0; "
+                         "0.5 = half as loud; 0.0 = muted)")
 
 
 def build_parser() -> argparse.ArgumentParser:

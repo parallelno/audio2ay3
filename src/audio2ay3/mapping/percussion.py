@@ -67,12 +67,18 @@ def apply_percussion(
     n_frames: int,
     *,
     channel: int = PERCUSSION_CHANNEL,
+    volume: float = 1.0,
 ) -> None:
-    """Overlay drum hits onto *builder*, stealing *channel* for each hit's decay."""
+    """Overlay drum hits onto *builder*, stealing *channel* for each hit's decay.
+
+    *volume* is a linear voltage ratio (0..1) applied uniformly to every amplitude frame
+    written here, so it scales the noise channel without touching the melodic tone channels.
+    ``1.0`` = full amplitude (default), ``0.5`` = half as loud, ``0.0`` = muted.
+    """
     for hit in percussion:
         recipe = _RECIPES.get(hit.kind, _RECIPES["snare"])
         onset = seconds_to_frame(hit.onset_s, frame_rate_hz)
-        scale = max(_MIN_DRUM_SCALE, min(1.0, hit.velocity))
+        scale = max(_MIN_DRUM_SCALE, min(1.0, hit.velocity)) * max(0.0, min(1.0, volume))
         for i, level in enumerate(recipe.decay):
             f = onset + i
             if f < 0 or f >= n_frames:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Literal
 
 
@@ -138,3 +139,13 @@ class RunConfig:
     # at once than there are free tone channels (the classic chiptune "arpeggio chord").
     # Opt-in: off by default.
     arpeggio: bool = False
+    # When set, Demucs is skipped entirely: stems are loaded directly from
+    # ``<stems_dir>/<song_name>/<song_name> (Synth|Bass|Drums|FX).<ext>``.
+    # Any audio format supported by soundfile is accepted (.mp3, .wav, .flac …).
+    # The ``separation`` field is ignored while this is set.
+    stems_dir: Path | None = None
+    # Overall volume of the noise channel as a linear voltage ratio (0..1).
+    # 1.0 = full amplitude (default), 0.5 = half as loud, 0.0 = muted.
+    # Applied uniformly to every amplitude frame written by the percussion renderer, so it
+    # scales the noise channel without touching the melodic tone channels.
+    noise_volume: float = 1.0

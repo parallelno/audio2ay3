@@ -98,7 +98,8 @@ hardware-legal `.ym` register stream. Needs the `neural` and `audio` extras.
 ```
 audio2ay3 convert <input-audio> [-o OUT]
                   [--separation {demucs,spleeter,none}] [--transcription {basic-pitch,mt3,yourmt3,onsets-frames}]
-                  [--yourmt3-model NAME] [--clock HZ] [--frame-rate HZ] [--chips N] [--no-gpu] [--no-progress] [--seed N]
+                  [--yourmt3-model NAME] [--stems-dir DIR]
+                  [--clock HZ] [--frame-rate HZ] [--chips N] [--no-gpu] [--no-progress] [--seed N]
                   [--no-amp-envelope] [--explain]
 ```
 
@@ -117,6 +118,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `--no-gpu` | off | Force CPU for the neural models (they otherwise auto-detect). |
 | `--no-progress` | off | Disable the per-stage progress bar (also auto-suppressed when stderr is not a terminal, e.g. when piped or redirected). |
 | `--seed N` | `0` | Deterministic seed for the neural stages. |
+| `--stems-dir DIR` | — | Load pre-separated stems from `<DIR>/<song-name>/` instead of running Demucs. The folder must contain `<song-name> (Synth).<ext>` (mandatory), and optionally `(Bass)`, `(Drums)`, and `(FX)` files. When found, Demucs is skipped entirely and `--separation` is ignored. When `<DIR>/<song-name>/` does not exist, the pipeline falls back to Demucs normally. The folder name must match the audio filename stem exactly. Accepts MP3, WAV, FLAC, OGG, M4A. |
 
 ### Arrangement options
 
@@ -126,6 +128,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `--vibrato` | off | Add a small pitch-LFO vibrato to expressive voices (organ, strings, reed, pipe, synth lead). |
 | `--breath` | off | Add a short breathy noise chiff at the attack of wind voices (reeds/pipes). |
 | `--arpeggio` | off | When more notes sound than there are free channels, cycle the squeezed chord tones on one channel instead of dropping them (the classic chiptune arpeggio). |
+| `--noise-volume SCALE` | `1.0` | Noise channel volume as a linear scale. `1.0` = full (default), `0.5` = half as loud, `0.0` = muted. Applied uniformly to every amplitude frame the percussion renderer writes, so it scales the noise channel without touching the melodic tone channels. |
 | `--explain` | off | After writing the `.ym`, print register-level diagnostics for the arranged song plus a voice-contention report (how many notes were dropped for lack of channels, and an estimate of what a second AY would recover). See [Reading `--explain`](#reading---explain). |
 
 > `--vibrato`, `--breath`, and `--arpeggio` are opt-in timbre features (off by default). They were
@@ -139,6 +142,10 @@ audio2ay3 convert samples\short\trumpet.ogg -o build\trumpet.ym --separation non
 
 # Full song: Demucs strips vocals first (default)
 audio2ay3 convert samples\long\Goblins_Lair.mp3 -o build\goblins.ym
+
+# Use perfect pre-separated stems — no Demucs pass at all
+# samples\stems\Goblins_Lair\ must contain "Goblins_Lair (Synth).mp3" etc.
+audio2ay3 convert samples\long\Goblins_Lair.mp3 --stems-dir samples\stems
 
 # Flat, constant-volume notes plus the diagnostics dump
 audio2ay3 convert samples\long\Goblins_Lair.mp3 --no-amp-envelope --explain
@@ -200,7 +207,8 @@ quick A/B listening without a separate `validate` step. Needs the same extras as
 ```
 audio2ay3 preview <input-audio> [-o OUT] [--wav] [--sr N] [--oversample N] [--bitrate N]
                   [--duration SEC]
-                  [--separation ...] [--transcription ...] [--yourmt3-model NAME] [--clock HZ] [--frame-rate HZ]
+                  [--separation ...] [--transcription ...] [--yourmt3-model NAME] [--stems-dir DIR]
+                  [--clock HZ] [--frame-rate HZ]
                   [--chips N] [--no-gpu] [--no-progress] [--seed N] [--no-amp-envelope] [--explain]
 ```
 
@@ -222,6 +230,62 @@ options from `validate`:
 audio2ay3 preview samples\short\trumpet.ogg -o build\trumpet.mp3 --separation none
 audio2ay3 preview samples\long\Goblins_Lair.mp3 --wav --duration 20 --explain
 ```
+
+---
+
+## Batch conversion with pre-separated stems
+
+When you have perfectly isolated per-instrument stems (from your DAW or any other source),
+passing them via `--stems-dir` gives the transcriber a cleaner signal than Demucs can produce
+and skips the slowest step in the pipeline entirely.
+
+### Stem folder layout
+
+For a song whose audio file is `Goblins_Lair.mp3`, create:
+
+```
+samples/stems/
+  Goblins_Lair/
+    Goblins_Lair (Synth).mp3    ← melody / harmony  (required)
+    Goblins_Lair (Bass).mp3     ← bass               (optional)
+    Goblins_Lair (Drums).mp3    ← drums              (optional)
+    Goblins_Lair (FX).mp3       ← effects            (optional, mixed into Synth)
+```
+
+The **folder name must match the audio filename stem exactly** (the match is case-sensitive on
+Linux/macOS). Any audio format that soundfile understands is accepted (MP3, WAV, FLAC, OGG, M4A).
+
+| Stem | Role when present |
+|------|------------------|
+| `(Synth)` | Fed to the note transcriber as the melodic/harmonic content. **Required.** |
+| `(Bass)` | Transcribed separately; placed on its own dedicated AY tone channel. |
+| `(Drums)` | Fed to the onset-detection stage; placed on the AY noise channel. |
+| `(FX)` | Mixed into `(Synth)` before transcription, adding tonal effects as extra notes. |
+
+### Single-song conversion
+
+```powershell
+audio2ay3 convert samples\long\Goblins_Lair.mp3 --stems-dir samples\stems --chips 2
+```
+
+### Batch dual-AY conversion
+
+`scripts/convert_long_dual.py` accepts `--stems-dir` and `--stems-only`. With `--stems-only`
+the input list is derived from the stems directory itself — `--in-dir` is not needed:
+
+```powershell
+# Convert every song that has a stems folder; ignore --in-dir entirely
+python scripts/convert_long_dual.py --stems-dir samples\stems --stems-only --out-dir results\stems_dual
+
+# Half-volume noise channel
+python scripts/convert_long_dual.py --stems-dir samples\stems --stems-only --noise-volume 0.5 --out-dir results\stems_dual
+
+# Or use the convenience batch script (has --noise-volume 0.5 set by default):
+.\convert_all_stems_dual.bat
+```
+
+Without `--stems-only`, the script processes every file in `--in-dir` (default `samples/long`).
+Songs that have a matching stems folder skip Demucs; songs that do not fall back to Demucs.
 
 ---
 
@@ -268,6 +332,9 @@ song = convert("samples/long/Goblins_Lair.mp3", cfg)
 
 - Use `--separation none` whenever the input is already instrumental (loops, stems, chiptune
   sources); it skips the slow Demucs pass entirely.
+- Use `--stems-dir` when you have original project stems. The transcriber gets a perfectly
+  isolated signal per instrument — no Demucs artifacts — which improves note detection accuracy
+  for melody, bass, and drums simultaneously. The Demucs pass is skipped entirely.
 - The first Demucs run downloads model weights to a local cache; later runs are faster.
 - For a fast turnaround while tuning, combine `preview --wav --duration 15` to render a short clip
   without MP3 encoding.

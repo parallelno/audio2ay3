@@ -20,8 +20,19 @@ Three products come out of one Demucs pass:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
+
+
+# Audio extensions tried when searching for a stem file, in preference order.
+_AUDIO_EXTS = (".mp3", ".wav", ".flac", ".ogg", ".m4a")
+
+
+def find_stems_folder(name: str, stems_dir: Path | str) -> Path | None:
+    """Return ``stems_dir / name`` if that directory exists, otherwise ``None``."""
+    d = Path(stems_dir) / name
+    return d if d.is_dir() else None
 
 
 @dataclass
@@ -122,3 +133,79 @@ def _separate_demucs(audio: np.ndarray, sr: int, model_name: str = "htdemucs") -
             bass_np = _resample_linear(bass_np, model_sr, sr)
 
     return SeparationResult(instrumental=inst_np, drums=drums_np, bass=bass_np, sr=sr)
+
+
+def load_from_stems_dir(
+    name: str,
+    stems_dir: Path | str,
+    target_sr: int,
+) -> "SeparationResult | None":
+    """Load pre-separated stems from *stems_dir*/*name*/ instead of running Demucs.
+
+    Uses :func:`find_stems_folder` to locate the song directory with fuzzy name matching, so
+    ``Goblins_Lair`` finds ``Goblin's Lair/``, ``PixelQuest(1)`` finds ``Pixel Quest/``, etc.
+
+    Returns ``None`` when no matching folder is found (caller should fall back to Demucs).
+
+    Looks for ``<song_dir>/<name> (<StemType>).<ext>`` (falling back to ``(<StemType>).<ext>``
+    without the name prefix) where *StemType* is one of ``Synth``, ``Bass``, ``Drums``, ``FX``.
+
+    * **Synth** → ``instrumental`` (mandatory — raises :exc:`FileNotFoundError` if folder found
+      but the Synth stem file is absent).
+    * **Bass**  → ``bass`` (``None`` when file missing).
+    * **Drums** → ``drums`` (``None`` when file missing).
+    * **FX**    → mixed into ``instrumental`` when present; ignored otherwise.
+    """
+    from .load_audio import load_audio
+
+    stems_dir = Path(stems_dir)
+    song_dir = find_stems_folder(name, stems_dir)
+    if song_dir is None:
+        return None
+
+    # Use both "<name> (StemType)" and plain "(StemType)" candidate names.
+    folder_name = song_dir.name
+
+    def _find(stem_type: str) -> Path | None:
+        for ext in _AUDIO_EXTS:
+            for candidate in (
+                song_dir / f"{folder_name} ({stem_type}){ext}",
+                song_dir / f"({stem_type}){ext}",
+            ):
+                if candidate.is_file():
+                    return candidate
+        return None
+
+    # --- Synth (instrumental melodic content) ---
+    synth_path = _find("Synth")
+    if synth_path is None:
+        raise FileNotFoundError(
+            f"No Synth stem found in {song_dir}. "
+            f"Expected e.g. '{folder_name} (Synth).mp3'."
+        )
+    instrumental, sr = load_audio(str(synth_path), target_sr)
+
+    # --- FX: mix into instrumental when present (tonal effects add melodic colour) ---
+    fx_path = _find("FX")
+    if fx_path is not None:
+        fx, _ = load_audio(str(fx_path), sr)
+        n = min(instrumental.size, fx.size)
+        blend = instrumental.copy()
+        blend[:n] += fx[:n]
+        if fx.size > instrumental.size:
+            blend = np.concatenate([blend, fx[n:]])
+        instrumental = blend
+
+    # --- Drums ---
+    drums: np.ndarray | None = None
+    drums_path = _find("Drums")
+    if drums_path is not None:
+        drums, _ = load_audio(str(drums_path), sr)
+
+    # --- Bass ---
+    bass: np.ndarray | None = None
+    bass_path = _find("Bass")
+    if bass_path is not None:
+        bass, _ = load_audio(str(bass_path), sr)
+
+    return SeparationResult(instrumental=instrumental, drums=drums, bass=bass, sr=sr)

@@ -157,7 +157,8 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
     # placement), or the second chip's channel C on dual-AY, isolating drums from the melody.
     perc_builder, perc_local = route(n_channels - 1)
     apply_percussion(
-        perc_builder, tr.percussion, frame_rate, n_frames, channel=perc_local
+        perc_builder, tr.percussion, frame_rate, n_frames,
+        channel=perc_local, volume=cfg.noise_volume,
     )
 
     frames = (
@@ -181,10 +182,15 @@ def convert(
     path: str,
     cfg: RunConfig,
     *,
+    name: str | None = None,
     trace: list[Transcription] | None = None,
     progress: Progress | None = None,
 ) -> YmSong:
     """Full neural conversion: audio file -> arranged :class:`YmSong`.
+
+    *name* overrides the song name written into the YM metadata (default: the input filename
+    stem). Pass the stems-folder name when the input file is a raw stem (e.g. a ``(Synth)``
+    file) so the YM metadata carries the clean song title instead.
 
     When *trace* is given, the pre-arrange :class:`Transcription` is appended to it, so callers
     (e.g. ``--explain``) can inspect the musical demand without re-running the neural stack.
@@ -193,25 +199,45 @@ def convert(
     ``None`` (the default) for silent library use.
     """
     p = progress or NullProgress()
-    tr = _build_transcription(path, cfg, p)
+    song_name = name or Path(path).stem
+    tr = _build_transcription(path, cfg, p, song_name=song_name)
     if trace is not None:
         trace.append(tr)
     p.step("arranging")
-    return arrange(tr, cfg, name=Path(path).stem)
+    return arrange(tr, cfg, name=song_name)
 
 
-def _build_transcription(path: str, cfg: RunConfig, progress: Progress) -> Transcription:
+def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_name: str | None = None) -> Transcription:
     """Run the neural front-end into a :class:`Transcription` (everything before ``arrange``)."""
     progress.step("loading audio")
     audio, sr = load_audio(path, cfg.render_sr)
+    # Use the explicitly-supplied song name (e.g. the stems folder name passed by the batch
+    # script) when looking up stems; fall back to the input filename stem otherwise.
+    lookup_name = song_name or Path(path).stem
     if cfg.transcription in ("mt3", "yourmt3"):
         progress.step("transcribing (multitrack)")
         return _build_transcription_multitrack(audio, sr, cfg)
-    # Mirrors _stage_labels: the "separating stems" / "detecting percussion" stages only exist
-    # when a real separation runs (mode != "none" yields bass + drum stems).
-    if cfg.separation != "none":
-        progress.step("separating stems")
-    stems = separate_stems(audio, sr, cfg.separation)
+    # Mirrors stage_labels: the "separating stems" / "loading pre-separated stems" /
+    # "detecting percussion" stages exist only when real separation runs OR stems_dir is set.
+    if cfg.stems_dir is not None:
+        from .analysis.separate import find_stems_folder, load_from_stems_dir
+        if find_stems_folder(lookup_name, cfg.stems_dir) is not None:
+            progress.step("loading pre-separated stems")
+            stems = load_from_stems_dir(lookup_name, cfg.stems_dir, sr)
+        else:
+            import sys
+            print(
+                f"audio2ay3: no stems folder found for {lookup_name!r}; "
+                "falling back to Demucs",
+                file=sys.stderr,
+            )
+            if cfg.separation != "none":
+                progress.step("separating stems")
+            stems = separate_stems(audio, sr, cfg.separation)
+    else:
+        if cfg.separation != "none":
+            progress.step("separating stems")
+        stems = separate_stems(audio, sr, cfg.separation)
     progress.step("transcribing")
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     # Follow each note's real loudness shape from its own stem so held notes sustain and plucks
@@ -288,11 +314,16 @@ def stage_labels(cfg: RunConfig, *, render: bool) -> list[str]:
     if cfg.transcription in ("mt3", "yourmt3"):
         labels.append("transcribing (multitrack)")
     else:
-        if cfg.separation != "none":
-            labels.append("separating stems")
-        labels.append("transcribing")
-        if cfg.separation != "none":
+        if cfg.stems_dir is not None:
+            labels.append("loading pre-separated stems")
+            labels.append("transcribing")
             labels.append("detecting percussion")
+        elif cfg.separation != "none":
+            labels.append("separating stems")
+            labels.append("transcribing")
+            labels.append("detecting percussion")
+        else:
+            labels.append("transcribing")
     labels.append("arranging")
     if render:
         labels.append("rendering audio")

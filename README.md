@@ -215,6 +215,89 @@ pytest                 # full unit suite should be green
 audio2ay3 --help       # CLI is wired
 ```
 
+## Best conversion setups
+
+Two independent dimensions determine quality: how many AY channels you target,
+and how cleanly the audio is separated before transcription.
+
+### 1. Always use dual-AY (`--chips 2`)
+
+A single AY-3-8910 has three tone channels. With `--chips 2` the converter
+targets six: bass gets a dedicated channel on chip 1, drums are isolated on
+chip 1's noise channel, and the melody spreads across four channels instead of
+ one or two. The result is denser polyphony with far fewer dropped notes.
+ `convert` writes two files — `<name>.ym` (chip 0) and `<name>.ay2.ym` (chip 1);
+`preview` renders both chips into one mixed audio file.
+
+```powershell
+audio2ay3 convert song.mp3 --chips 2
+```
+
+Use `--explain` after conversion to see the voice-contention report: it
+quantifies exactly how many notes were dropped and confirms that the second
+chip was worth adding.
+
+### 2a. Best quality — pre-separated stems (`--stems-dir`)
+
+If you have the original project stems (exported from your DAW or any other
+source), pass them via `--stems-dir` instead of letting Demucs do the
+separation. Each stem is a perfectly isolated signal with zero bleed, which
+means:
+
+- Basic Pitch transcribes the **Synth** stem with no bass or drum
+contamination — cleaner notes,
+  fewer phantom pitches, better onset timing.
+- The **Bass** stem is perfectly isolated — the dedicated bass channel tracks
+the original more
+  accurately.
+- The **Drums** stem has no bleed — percussion detection fires only on real
+hits.
+- **FX** stems (when present) are mixed into the instrumental, adding tonal
+effects as extra notes.
+- Demucs is **skipped entirely** — the pipeline runs significantly faster.
+
+**Stem folder layout** — name the folder exactly after the audio file stem:
+
+```
+samples/stems/
+  Goblins_Lair/
+    Goblins_Lair (Synth).mp3    ← melody / harmony  (required)
+    Goblins_Lair (Bass).mp3     ← bass               (optional)
+    Goblins_Lair (Drums).mp3    ← drums              (optional)
+    Goblins_Lair (FX).mp3       ← effects            (optional)
+```
+
+```powershell
+# Single song — stems + dual-AY
+audio2ay3 convert samples\long\Goblins_Lair.mp3 --stems-dir samples\stems --chips 2
+
+# Batch: convert every stems folder, output dual-AY .ym + mixed .mp3
+.\convert_all_stems_dual.bat
+# or directly:
+python scripts\convert_long_dual.py --stems-dir samples\stems --stems-only --out-dir results\stems_dual
+```
+
+### 2b. Good quality — fine-tuned Demucs (`--separation demucs-ft`)
+
+When you only have the mixed audio (no project stems), use the fine-tuned Demucs model. It
+produces better stem separation than the default `htdemucs` at the cost of roughly 4× the
+separation time, and the improved stems propagate directly into transcription accuracy.
+
+```powershell
+# Single song
+audio2ay3 convert samples\long\Goblins_Lair.mp3 --separation demucs-ft --chips 2
+
+# Batch — dual-AY, fine-tuned Demucs
+.\convert_all_demucs_tf_dual.bat
+# or directly:
+python scripts\convert_long_dual.py --separation demucs-ft --out-dir results\demucs-ft_dual
+```
+
+The default `--separation demucs` (un-fine-tuned) is the fastest neural option and a reasonable
+starting point, but `demucs-ft` is worth the extra time for final-quality renders.
+
+---
+
 ## Usage
 
 ### Validate — render a YM register dump to audio (no neural deps)
@@ -247,8 +330,10 @@ audio2ay3 preview samples\short\trumpet.ogg -o build\trumpet.mp3 --separation no
 
 | Option | Meaning |
 |--------|---------|
-| `--separation {demucs,none}` | Neural vocal/stem separation (default `demucs`; `none` for instrumental input). |
-| `--transcription {basic-pitch,mt3,onsets-frames}` | Transcription backend (default `basic-pitch`). |
+| `--chips {1,2}` | Number of AY chips: `1` (3 channels) or `2` (dual-AY, 6 channels — recommended). |
+| `--stems-dir DIR` | Load pre-separated stems from `<DIR>/<song>/` instead of running Demucs (see [Best conversion setups](#best-conversion-setups)). |
+| `--separation {demucs,demucs-ft,demucs6,none}` | Neural separation backend (default `demucs`; `demucs-ft` = better/slower; `none` for instrumental input). |
+| `--transcription {basic-pitch,mt3,yourmt3}` | Transcription backend (default `basic-pitch`). |
 | `--clock HZ` | Master clock (default 1.7734 MHz, ZX Spectrum). |
 | `--frame-rate HZ` | Replay frame rate (default 50). |
 | `--no-gpu` | Force CPU for the neural models. |

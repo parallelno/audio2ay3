@@ -7,6 +7,8 @@ set OUT=results\demucs-ft
 if not exist %OUT% mkdir %OUT%
 
 for %%F in (
+    PixelQuest(1).mp3
+    PixelQuest.mp3
     Dungeon_Ore
     Goblins_Lair
     Pixel_Hearthbeat

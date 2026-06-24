@@ -6,7 +6,7 @@ from .dynamics import attach_amp_contours
 from .load_audio import load_audio
 from .model import Note, Percussion, Transcription
 from .percussion_detect import detect_percussion
-from .separate import SeparationResult, separate, separate_stems
+from .separate import SeparationResult, find_stems_folder, load_from_stems_dir, separate, separate_stems
 from .transcribe import transcribe
 
 __all__ = [
@@ -16,7 +16,9 @@ __all__ = [
     "Transcription",
     "attach_amp_contours",
     "detect_percussion",
+    "find_stems_folder",
     "load_audio",
+    "load_from_stems_dir",
     "separate",
     "separate_stems",
     "transcribe",

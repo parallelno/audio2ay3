@@ -55,6 +55,17 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--glob", default="*", help="filename glob within --in-dir")
     ap.add_argument("--force", action="store_true",
                     help="re-convert songs whose outputs already exist")
+    ap.add_argument("--stems-dir", dest="stems_dir", default=None,
+                    help="directory of pre-separated stems; skips Demucs and loads "
+                         "<stems-dir>/<song>/<song> (Synth|Bass|Drums).mp3 directly "
+                         "(--separation is ignored when this is set)")
+    ap.add_argument("--stems-only", dest="stems_only", action="store_true",
+                    help="derive the input list from --stems-dir subfolders directly; "
+                         "no --in-dir needed. Each subfolder must contain a (Synth) stem.")
+    ap.add_argument("--noise-volume", type=float, default=1.0, dest="noise_volume",
+                    metavar="SCALE",
+                    help="noise channel volume as a linear scale "
+                         "(default 1.0; 0.5 = half as loud; 0.0 = muted)")
     args = ap.parse_args(argv)
 
     # Imported lazily (after arg parsing) so ``--help`` works without dragging in the heavy
@@ -65,19 +76,47 @@ def main(argv: list[str] | None = None) -> int:
     from audio2ay3.render import Renderer
     from audio2ay3.ymformat import ym_writer
 
-    in_dir = Path(args.in_dir)
+    stems_dir_path = Path(args.stems_dir) if args.stems_dir else None
     out_dir = Path(args.out_dir)
-    if not in_dir.is_dir():
-        print(f"error: input folder not found: {in_dir}", file=sys.stderr)
-        return 2
 
-    inputs = sorted(
-        p for p in in_dir.glob(args.glob)
-        if p.is_file() and p.suffix.lower() in _AUDIO_EXTS
-    )
-    if not inputs:
-        print(f"error: no audio files in {in_dir} matching {args.glob!r}", file=sys.stderr)
-        return 2
+    # --- Build the (song_name, audio_path) input list ---
+    # When --stems-only: discover songs from the stems directory itself; --in-dir is ignored.
+    # Each subfolder must contain a ``<folder> (Synth).<ext>`` file.
+    # When not --stems-only: use --in-dir as before (with optional Demucs fallback).
+    if args.stems_only:
+        if stems_dir_path is None:
+            print("error: --stems-only requires --stems-dir", file=sys.stderr)
+            return 2
+        if not stems_dir_path.is_dir():
+            print(f"error: stems directory not found: {stems_dir_path}", file=sys.stderr)
+            return 2
+        inputs: list[tuple[str, Path]] = []  # (song_name, synth_audio_path)
+        for folder in sorted(stems_dir_path.iterdir()):
+            if not folder.is_dir():
+                continue
+            for ext in _AUDIO_EXTS:
+                synth = folder / f"{folder.name} (Synth){ext}"
+                if synth.is_file():
+                    inputs.append((folder.name, synth))
+                    break
+        if not inputs:
+            print(f"error: no Synth stems found in {stems_dir_path}", file=sys.stderr)
+            return 2
+        source_label = str(stems_dir_path)
+    else:
+        in_dir = Path(args.in_dir)
+        if not in_dir.is_dir():
+            print(f"error: input folder not found: {in_dir}", file=sys.stderr)
+            return 2
+        raw = sorted(
+            p for p in in_dir.glob(args.glob)
+            if p.is_file() and p.suffix.lower() in _AUDIO_EXTS
+        )
+        if not raw:
+            print(f"error: no audio files in {in_dir} matching {args.glob!r}", file=sys.stderr)
+            return 2
+        inputs = [(p.stem, p) for p in raw]
+        source_label = str(in_dir)
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -86,31 +125,33 @@ def main(argv: list[str] | None = None) -> int:
         separation=args.separation,
         transcription=args.transcription,
         yourmt3_model=args.model,
+        stems_dir=stems_dir_path,
+        noise_volume=args.noise_volume,
     )
     renderer = Renderer(render_sr=cfg.render_sr, oversample=cfg.oversample)
 
     front_end = args.transcription + (f"/{args.model}" if args.model else "")
-    print(f"Converting {len(inputs)} song(s) from {in_dir} -> {out_dir}")
-    print(f"  front-end: {front_end} + {args.separation}  |  chips: 2 (dual-AY)\n")
+    separation_label = "pre-separated stems" if stems_dir_path is not None else args.separation
+    print(f"Converting {len(inputs)} song(s) from {source_label} -> {out_dir}")
+    print(f"  front-end: {front_end} + {separation_label}  |  chips: 2 (dual-AY)\n")
 
     failures: list[tuple[str, str]] = []
-    for i, src in enumerate(inputs, 1):
-        stem = src.stem
-        out_ym = out_dir / f"{stem}.ym"
-        out_mp3 = out_dir / f"{stem}.mp3"
+    for i, (song_name, src) in enumerate(inputs, 1):
+        out_ym = out_dir / f"{song_name}.ym"
+        out_mp3 = out_dir / f"{song_name}.mp3"
         if out_ym.exists() and out_mp3.exists() and not args.force:
-            print(f"[{i}/{len(inputs)}] skip (exists): {stem}")
+            print(f"[{i}/{len(inputs)}] skip (exists): {song_name}")
             continue
 
         print(f"[{i}/{len(inputs)}] {src.name} ...", flush=True)
         t0 = time.time()
         try:
-            song = convert(str(src), cfg)                       # one neural pass
+            song = convert(str(src), cfg, name=song_name)      # one neural pass
             ym_paths = _write_multichip(song, str(out_ym), ym_writer)
             renderer.render_to_file(song, str(out_mp3), bitrate_kbps=cfg.mp3_bitrate_kbps)
         except Exception as exc:  # batch driver: report and keep going to the next song
             print(f"    FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
-            failures.append((stem, f"{type(exc).__name__}: {exc}"))
+            failures.append((song_name, f"{type(exc).__name__}: {exc}"))
             continue
 
         dt = (time.time() - t0) / 60.0
