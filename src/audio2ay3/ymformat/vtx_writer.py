@@ -1,47 +1,39 @@
-"""Write a :class:`YmSong` as a VTX file (Vortex Tracker register-dump format).
+"""Write a YmSong as a VTX file (original ZLib variant, V_Soft / Vortex Project).
 
-VTX format (V_Soft / Vortex Project), as expected by AY_Emul 2.x and described in
-its README.TXT:
+Header layout (15 bytes, all little-endian):
 
-Header (16 bytes, all little-endian)
--------------------------------------
-Offset  Size  Type    Field
- 0       2    word    ID: b"ay" (AY-3-8910/12) or b"ym" (YM2149)
- 2       1    byte    stereo/loop byte — bits 0-2 = stereo mode:
-                        0=MONO  1=ABC  2=ACB  3=BAC  4=BCA  5=CAB  6=CBA
- 3       2    word    loopStart — loop VBL frame index (0 = beginning of melody)
- 5       4    dword   chipFreq  — AY clock in Hz (ZX=1 773 400, Atari=2 000 000)
- 9       1    byte    playerFreq — player interrupt rate in VBL/sec (50 for PAL)
-10       2    word    year      — year of composition (0 = unknown)
-12       4    dword   unpackedSize — size of uncompressed frame data in bytes
+  Offset  Size  Field
+   0       2    id        b"ay" (AY-3-8910/12) or b"ym" (YM2149)
+   2       1    stereo    0=MONO 1=ABC 2=ACB 3=BAC 4=BCA 5=CAB 6=CBA
+   3       1    loop      1=loop enabled, 0=no loop
+   4       2    loopStart loop frame index (0 = beginning of melody)
+   6       2    freq      playback frequency in Hz (50 for PAL)
+   8       1    chipType  1=single AY, 2=turboAY (dual chip)
+   9       2    year      year of composition (0 = unknown)
+  11       1    playerClock  0=1 773 400 Hz ZX Spectrum, 1=2 000 000 Hz Atari ST
+  12       3    reserved  must be 0x00 0x00 0x00
 
-Strings (immediately after header, 5 × null-terminated)
----------------------------------------------------------
-  title, author, source-program, tracker-name, comment
+After header: 5 x null-terminated strings: title, author, from, tracker, comment
+After strings: ZLib-compressed frame data
 
-Compressed data (immediately after strings)
---------------------------------------------
-  Raw LHA -lh5- compressed payload — no LHA archive file header, no end marker.
-  Decompresses to unpackedSize bytes of YM3-compatible frame data:
-      R0[0..N-1], R1[0..N-1], …, R13[0..N-1]   (14 regs × N frames, column-major)
+Frame data layout (column-major, same as YM3):
+  chipType=1: R0[0..N-1], R1[0..N-1], ..., R13[0..N-1]           (14 x N bytes)
+  chipType=2: chip-0 block (14 x N bytes) then chip-1 block (14 x N bytes)
 
-Dual-AY songs
--------------
-VTX is inherently single-chip.  For ``n_chips == 2`` callers should iterate
-:meth:`YmSong.per_chip_songs` and call :func:`write` once per chip (handled by
-:func:`audio2ay3.cli._write_song`).  :func:`write` and :func:`to_bytes` always
-encode the first 14 register columns (chip 0) only.
+Supported by ZXTune, Vortex Tracker II, and other modern ZX players.
 """
 
 from __future__ import annotations
 
 import struct
+import zlib
 
 import numpy as np
 
 from .model import YmSong
 
-# ── header constants ───────────────────────────────────────────────────────────
+# ---- constants ---------------------------------------------------------------
+
 _ID_AY: bytes = b"ay"   # AY-3-8910 / AY-3-8912
 _ID_YM: bytes = b"ym"   # YM2149
 
@@ -53,139 +45,87 @@ STEREO_BCA  = 4
 STEREO_CAB  = 5
 STEREO_CBA  = 6
 
-# VTX stores R0..R13 only; R14/R15 (I/O ports) are absent
-_REGS_PER_CHIP = 14
+_CHIP_SINGLE = 1
+_CHIP_TURBO  = 2   # turboAY / dual chip
 
-# Fixed header struct (all LE): 2s id, B stereo, H loopStart, I chipFreq,
-#                                B playerFreq, H year, I unpackedSize
-# Sizes: 2+1+2+4+1+2+4 = 16 bytes
-_HDR_FMT = "<2sBHIBHI"
-assert struct.calcsize(_HDR_FMT) == 16
+_CLOCK_ZX    = 0   # 1 773 400 Hz (ZX Spectrum)
+_CLOCK_ATARI = 1   # 2 000 000 Hz (Atari ST)
 
+_CLOCK_MAP: dict[int, int] = {
+    1_773_400: _CLOCK_ZX,
+    1_750_000: _CLOCK_ZX,
+    2_000_000: _CLOCK_ATARI,
+}
 
-# ── LHA -lh5- store compressor ────────────────────────────────────────────────
+_REGS_PER_CHIP = 14   # R0..R13; R14/R15 (I/O ports) not stored
 
-def _lha_lh5_store(data: bytes) -> bytes:
-    """Encode *data* as a valid LHA ``-lh5-`` stream using store-only (no LZ77) coding.
-
-    Every input byte is emitted as a literal using a flat 8-bit Huffman code
-    (symbol k → 8-bit canonical code = k).  Output is valid ``-lh5-`` and slightly
-    larger than the input (~6 bytes of header per 65 535-byte block).
-
-    Returns raw compressed-stream bytes — **no** LHA archive file header and **no**
-    archive end-marker (0x00), exactly what the VTX format expects.
-    """
-    _MAX_BLOCK = 65_535  # max code-words per LH5 block (16-bit count field)
-
-    out = bytearray()
-    buf = 0   # MSB-first bit accumulator
-    cnt = 0   # pending bits in buf
-
-    def emit(n: int, v: int) -> None:
-        nonlocal buf, cnt
-        buf = (buf << n) | (v & ((1 << n) - 1))
-        cnt += n
-        while cnt >= 8:
-            cnt -= 8
-            out.append((buf >> cnt) & 0xFF)
-            buf &= (1 << cnt) - 1
-
-    i = 0
-    total = len(data)
-    while i < total:
-        chunk_end = min(i + _MAX_BLOCK, total)
-        block_size = chunk_end - i   # number of literal code-words
-
-        # ── block count (16 bits) ────────────────────────────────────────────
-        emit(16, block_size)
-
-        # ── T-tree (encodes C-tree lengths) ─────────────────────────────────
-        # _read_pt_len(NT=19, TBIT=5, 3): getbits(5) = n; if n==0: single=getbits(5)
-        # We want single=10 so every C-tree length = 10-2 = 8.
-        emit(5, 0)    # T n=0
-        emit(5, 10)   # T single=10
-
-        # ── C-tree (literal/length Huffman, 256 symbols all length 8) ───────
-        # _read_c_len: getbits(CBIT=9) = n; then for each symbol: decode T-tree.
-        # T-tree is single=10 → zero bits consumed per symbol → all lengths = 8.
-        emit(9, 256)  # C n=256  (no additional bits for the 256 lengths)
-
-        # ── P-tree (positions, never used since we emit only literals) ───────
-        # _read_pt_len(NP=14, PBIT=4, -1): getbits(4)=n; if n==0: single=getbits(4)
-        emit(4, 0)    # P n=0
-        emit(4, 0)    # P single=0
-
-        # ── literal data ─────────────────────────────────────────────────────
-        # The flat C-tree gives canonical code for symbol k = 8-bit value k.
-        for j in range(i, chunk_end):
-            emit(8, data[j])
-
-        i = chunk_end
-
-    # Flush remaining bits (zero-padded on the right)
-    if cnt > 0:
-        out.append(buf << (8 - cnt))
-
-    return bytes(out)
+# 15-byte header struct (all LE):
+#   2s id | B stereo | B loop | H loopStart | H freq |
+#   B chipType | H year | B playerClock | B B B reserved
+_HDR_FMT = "<2sBBHHBHBBBB"
+assert struct.calcsize(_HDR_FMT) == 15
 
 
-# ── public API ────────────────────────────────────────────────────────────────
+# ---- public API --------------------------------------------------------------
 
 def _song_to_bytes(song: YmSong, *, stereo: int = STEREO_MONO) -> bytes:
-    """Serialise the first chip of *song* to VTX bytes."""
-    frames = np.ascontiguousarray(song.frames, dtype=np.uint8)
-    n_frames = frames.shape[0]
+    """Serialise *song* to VTX bytes.
 
-    # Chip 0: columns 0..13; R14/R15 absent in VTX
-    regs14 = frames[:, :_REGS_PER_CHIP]  # (n_frames, 14)
+    Single-chip songs produce chipType=1 (14 x N frame data).
+    Dual-chip songs produce chipType=2 (chip-0 block then chip-1 block, 28 x N).
+    """
+    n_chips = max(1, song.n_chips)
+    chip_type = _CHIP_TURBO if n_chips == 2 else _CHIP_SINGLE
+    clock_id  = _CLOCK_MAP.get(int(song.master_clock), _CLOCK_ZX)
 
-    # Column-major layout: R0[0..N-1], R1[0..N-1], …, R13[0..N-1]  (= YM3 layout)
-    frame_data = np.ascontiguousarray(regs14.T).tobytes()
-    unpacked_size = len(frame_data)
+    # Build frame data: one 14xN column-major block per chip, chips concatenated.
+    per_chip = song.per_chip_songs()
+    blocks: list[bytes] = []
+    for cs in per_chip[:n_chips]:
+        regs14 = np.ascontiguousarray(cs.frames[:, :_REGS_PER_CHIP], dtype=np.uint8)
+        blocks.append(np.ascontiguousarray(regs14.T).tobytes())
+    frame_data = b"".join(blocks)
 
-    compressed = _lha_lh5_store(frame_data)
+    compressed = zlib.compress(frame_data, level=9)
 
-    # ── fixed header ──────────────────────────────────────────────────────────
-    loop_start  = max(0, int(song.loop_frame))
-    chip_freq   = max(1, int(song.master_clock))   # Hz
-    player_freq = max(1, min(255, int(song.frame_rate)))  # VBL/sec
+    # Header
+    loop_start = max(0, int(song.loop_frame))
+    freq       = max(1, min(65535, int(song.frame_rate)))
 
     header = struct.pack(
         _HDR_FMT,
         _ID_AY,
         stereo,
+        1,           # loop always enabled
         loop_start,
-        chip_freq,
-        player_freq,
-        0,              # year unknown
-        unpacked_size,
+        freq,
+        chip_type,
+        0,           # year unknown
+        clock_id,
+        0, 0, 0,     # reserved
     )
 
-    # ── 5 null-terminated metadata strings ───────────────────────────────────
+    # 5 null-terminated metadata strings (immediately after header)
     def _nul(s: str) -> bytes:
         return s.encode("latin-1", "replace") + b"\x00"
 
     strings = (
-        _nul(song.name)      # title
-        + _nul(song.author)  # author
-        + b"\x00"            # source program (rip origin — not tracked)
-        + b"audio2ay3\x00"   # tracker / editor
-        + _nul(song.comment) # comment
+        _nul(song.name)
+        + _nul(song.author)
+        + b"\x00"
+        + b"audio2ay3\x00"
+        + _nul(song.comment)
     )
 
     return header + strings + compressed
 
 
 def to_bytes(song: YmSong, *, stereo: int = STEREO_MONO) -> bytes:
-    """Serialise *song* (chip 0) to VTX bytes.
-
-    For dual-chip songs only chip 0 is written.  Use :func:`audio2ay3.cli._write_song`
-    to obtain one VTX file per chip.
-    """
+    """Serialise *song* to VTX bytes (single or dual chip in one file)."""
     return _song_to_bytes(song, stereo=stereo)
 
 
 def write(song: YmSong, path: str, **kwargs) -> None:
-    """Write *song* (chip 0) to *path* as a VTX file."""
+    """Write *song* to *path* as a VTX file."""
     with open(path, "wb") as fh:
         fh.write(_song_to_bytes(song, **kwargs))

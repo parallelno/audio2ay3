@@ -44,20 +44,14 @@ def _write_multichip(song, out: str, ym_writer) -> list[str]:
 def _write_song(song, out: str, fmt: str) -> list[str]:
     """Write *song* in the requested format; return the list of files written.
 
-    ``fmt='ym'``: one ``.ym`` per chip (chip 1 → ``<stem>.ay2.ym``).
-    ``fmt='vtx'``: one ``.vtx`` per chip (chip 1 → ``<stem>.ay2.vtx``).
-    VTX is single-chip per file; the dual-chip convention mirrors the YM pair approach.
+    ``fmt='ym'``: one ``.ym`` per chip (chip 1 -> ``<stem>.ay2.ym``).
+    ``fmt='vtx'``: one ``.vtx`` file; chipType=2 encodes dual-AY natively.
     """
     from .ymformat import vtx_writer, ym_writer
 
     if fmt == "vtx":
-        base = Path(out)
-        paths: list[str] = []
-        for i, chip_song in enumerate(song.per_chip_songs()):
-            p = base if i == 0 else base.with_name(f"{base.stem}.ay{i + 1}{base.suffix}")
-            vtx_writer.write(chip_song, str(p))
-            paths.append(str(p))
-        return paths
+        vtx_writer.write(song, out)
+        return [out]
     # default: ym
     if song.n_chips > 1:
         return _write_multichip(song, out, ym_writer)
