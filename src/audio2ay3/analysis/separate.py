@@ -166,7 +166,10 @@ def load_from_stems_dir(
     # Use both "<name> (StemType)" and plain "(StemType)" candidate names.
     folder_name = song_dir.name
 
+    _AUDIO_EXTS_SET = set(_AUDIO_EXTS)
+
     def _find(stem_type: str) -> Path | None:
+        # Priority 1: exact patterns (folder-name prefix or bare bracket prefix)
         for ext in _AUDIO_EXTS:
             for candidate in (
                 song_dir / f"{folder_name} ({stem_type}){ext}",
@@ -174,6 +177,13 @@ def load_from_stems_dir(
             ):
                 if candidate.is_file():
                     return candidate
+        # Priority 2: any audio file in the folder whose stem contains (<stem_type>),
+        # case-insensitive — handles files whose name prefix differs from the folder name.
+        marker = f"({stem_type.lower()})"
+        for f in sorted(song_dir.iterdir()):
+            if f.is_file() and f.suffix.lower() in _AUDIO_EXTS_SET \
+                    and marker in f.stem.lower():
+                return f
         return None
 
     # --- Synth (instrumental melodic content) ---

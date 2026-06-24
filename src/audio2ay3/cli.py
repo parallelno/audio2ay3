@@ -41,6 +41,30 @@ def _write_multichip(song, out: str, ym_writer) -> list[str]:
     return paths
 
 
+def _write_song(song, out: str, fmt: str) -> list[str]:
+    """Write *song* in the requested format; return the list of files written.
+
+    ``fmt='ym'``: one ``.ym`` per chip (chip 1 → ``<stem>.ay2.ym``).
+    ``fmt='vtx'``: one ``.vtx`` per chip (chip 1 → ``<stem>.ay2.vtx``).
+    VTX is single-chip per file; the dual-chip convention mirrors the YM pair approach.
+    """
+    from .ymformat import vtx_writer, ym_writer
+
+    if fmt == "vtx":
+        base = Path(out)
+        paths: list[str] = []
+        for i, chip_song in enumerate(song.per_chip_songs()):
+            p = base if i == 0 else base.with_name(f"{base.stem}.ay{i + 1}{base.suffix}")
+            vtx_writer.write(chip_song, str(p))
+            paths.append(str(p))
+        return paths
+    # default: ym
+    if song.n_chips > 1:
+        return _write_multichip(song, out, ym_writer)
+    ym_writer.write(song, out)
+    return [out]
+
+
 def _make_progress(args: argparse.Namespace, cfg, *, render: bool):
     """A stage progress reporter for convert/preview, or ``None`` when disabled / non-interactive."""
     if getattr(args, "no_progress", False) or not sys.stderr.isatty():
@@ -118,10 +142,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 def cmd_convert(args: argparse.Namespace) -> int:
     from .pipeline import convert
-    from .ymformat import ym_writer
 
+    fmt = getattr(args, "format", "ym")
+    default_ext = ".vtx" if fmt == "vtx" else ".ym"
     cfg = _build_run_config(args)
-    out = args.output or _default_out(args.input, ".ym")
+    out = args.output or _default_out(args.input, default_ext)
     Path(out).parent.mkdir(parents=True, exist_ok=True)
 
     explain = getattr(args, "explain", False)
@@ -136,13 +161,9 @@ def cmd_convert(args: argparse.Namespace) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 3
 
-    if song.n_chips > 1:
-        out_paths = _write_multichip(song, out, ym_writer)
-        print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> "
-              f"{', '.join(out_paths)}")
-    else:
-        ym_writer.write(song, out)
-        print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
+    out_paths = _write_song(song, out, fmt)
+    print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> "
+          f"{', '.join(out_paths)}")
     if explain:
         from .explain import describe_song
 
@@ -270,9 +291,14 @@ def build_parser() -> argparse.ArgumentParser:
                    help="override replay frame rate (Hz)")
     v.set_defaults(func=cmd_validate)
 
-    c = sub.add_parser("convert", help="Convert audio to a .ym register stream")
+    c = sub.add_parser("convert", help="Convert audio to a register-dump file (.ym or .vtx)")
     c.add_argument("input", help="input audio file (WAV/FLAC/OGG; MP3 if libsndfile supports)")
-    c.add_argument("-o", "--output", help="output .ym (default: build/<name>.ym)")
+    c.add_argument("-o", "--output",
+                   help="output file (default: build/<name>.ym or build/<name>.vtx)")
+    c.add_argument("--format", choices=["ym", "vtx"], default="ym",
+                   help="output register-dump format: 'ym' (YM6, one file per chip; default) or "
+                        "'vtx' (Vortex Tracker; single file, natively supports dual-AY via "
+                        "turboAY chipType=2)")
     _add_analysis_args(c)
     _add_arrangement_args(c)
     c.set_defaults(func=cmd_convert)

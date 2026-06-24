@@ -66,15 +66,18 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SCALE",
                     help="noise channel volume as a linear scale "
                          "(default 1.0; 0.5 = half as loud; 0.0 = muted)")
+    ap.add_argument("--format", choices=["ym", "vtx"], default="ym",
+                    help="output register-dump format: 'ym' (YM6, two files per song: "
+                         "<name>.ym + <name>.ay2.ym; default) or 'vtx' (Vortex Tracker, "
+                         "single file with turboAY chipType=2 for dual-AY)")
     args = ap.parse_args(argv)
 
     # Imported lazily (after arg parsing) so ``--help`` works without dragging in the heavy
     # neural / numba stack.
-    from audio2ay3.cli import _write_multichip
+    from audio2ay3.cli import _write_song
     from audio2ay3.config import ChipConfig, RunConfig
     from audio2ay3.pipeline import convert
     from audio2ay3.render import Renderer
-    from audio2ay3.ymformat import ym_writer
 
     stems_dir_path = Path(args.stems_dir) if args.stems_dir else None
     out_dir = Path(args.out_dir)
@@ -94,11 +97,16 @@ def main(argv: list[str] | None = None) -> int:
         for folder in sorted(stems_dir_path.iterdir()):
             if not folder.is_dir():
                 continue
-            for ext in _AUDIO_EXTS:
-                synth = folder / f"{folder.name} (Synth){ext}"
-                if synth.is_file():
-                    inputs.append((folder.name, synth))
+            # Accept any audio file whose stem contains "(Synth)" (case-insensitive).
+            # The file name prefix need not match the folder name.
+            synth = None
+            for f in sorted(folder.iterdir()):
+                if f.is_file() and f.suffix.lower() in _AUDIO_EXTS \
+                        and "(synth)" in f.stem.lower():
+                    synth = f
                     break
+            if synth is not None:
+                inputs.append((folder.name, synth))
         if not inputs:
             print(f"error: no Synth stems found in {stems_dir_path}", file=sys.stderr)
             return 2
@@ -120,6 +128,9 @@ def main(argv: list[str] | None = None) -> int:
 
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    fmt = args.format
+    reg_ext = ".vtx" if fmt == "vtx" else ".ym"
+
     cfg = RunConfig(
         chip=ChipConfig(n_chips=2),          # dual-AY: 6 tone channels
         separation=args.separation,
@@ -133,13 +144,13 @@ def main(argv: list[str] | None = None) -> int:
     front_end = args.transcription + (f"/{args.model}" if args.model else "")
     separation_label = "pre-separated stems" if stems_dir_path is not None else args.separation
     print(f"Converting {len(inputs)} song(s) from {source_label} -> {out_dir}")
-    print(f"  front-end: {front_end} + {separation_label}  |  chips: 2 (dual-AY)\n")
+    print(f"  front-end: {front_end} + {separation_label}  |  chips: 2 (dual-AY)  |  format: {fmt}\n")
 
     failures: list[tuple[str, str]] = []
     for i, (song_name, src) in enumerate(inputs, 1):
-        out_ym = out_dir / f"{song_name}.ym"
+        out_reg = out_dir / f"{song_name}{reg_ext}"
         out_mp3 = out_dir / f"{song_name}.mp3"
-        if out_ym.exists() and out_mp3.exists() and not args.force:
+        if out_reg.exists() and out_mp3.exists() and not args.force:
             print(f"[{i}/{len(inputs)}] skip (exists): {song_name}")
             continue
 
@@ -147,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         t0 = time.time()
         try:
             song = convert(str(src), cfg, name=song_name)      # one neural pass
-            ym_paths = _write_multichip(song, str(out_ym), ym_writer)
+            reg_paths = _write_song(song, str(out_reg), fmt)
             renderer.render_to_file(song, str(out_mp3), bitrate_kbps=cfg.mp3_bitrate_kbps)
         except Exception as exc:  # batch driver: report and keep going to the next song
             print(f"    FAILED: {type(exc).__name__}: {exc}", file=sys.stderr)
@@ -156,7 +167,7 @@ def main(argv: list[str] | None = None) -> int:
 
         dt = (time.time() - t0) / 60.0
         print(f"    ok: {song.n_frames} frames ({song.duration_s:.1f}s) in {dt:.1f} min")
-        print(f"    -> {', '.join(ym_paths)}")
+        print(f"    -> {', '.join(reg_paths)}")
         print(f"    -> {out_mp3}")
 
     done = len(inputs) - len(failures)
