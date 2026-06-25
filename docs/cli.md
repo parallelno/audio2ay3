@@ -107,7 +107,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 
 | Option | Default | Meaning |
 |--------|---------|---------|
-| `input` | — | Input audio (WAV/FLAC/OGG; MP3 if your libsndfile build supports it). |
+| `input` | — | Input audio (WAV/FLAC/OGG; MP3 if your libsndfile build supports it; M4A/AAC via `ffmpeg` on PATH). |
 | `-o`, `--output` | `build/<name>.ym` | Output `.ym` path. |
 | `--separation` | `demucs` | Source-separation backend. `demucs` is `htdemucs` (4-stem). `demucs-ft` is the fine-tuned `htdemucs_ft` — better separation, ~4× slower. `demucs6` is the 6-stem `htdemucs_6s` (adds guitar/piano; **experimental**). `none` skips separation — use it for already-instrumental input. `spleeter` is recognised but not implemented (raises a clear error). |
 | `--transcription` | `basic-pitch` | Transcription backend. `mt3` is the heavyweight multi-instrument path (Linux/WSL only). `yourmt3` is an optional, opt-in pure-PyTorch multi-instrument backend that installs on native Windows (GPL-3.0 model installed separately; see the README). It defaults to the `YMT3+` variant, which did best in testing; the heavier MoE variants transcribed more sparsely. `onsets-frames` is reserved and raises a clear error. |
@@ -253,7 +253,8 @@ samples/stems/
 ```
 
 The **folder name must match the audio filename stem exactly** (the match is case-sensitive on
-Linux/macOS). Any audio format that soundfile understands is accepted (MP3, WAV, FLAC, OGG, M4A).
+Linux/macOS). Any audio format that soundfile understands is accepted (MP3, WAV, FLAC, OGG); M4A
+is decoded via `ffmpeg` (must be on PATH).
 
 | Stem | Role when present |
 |------|------------------|
