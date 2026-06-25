@@ -13,7 +13,7 @@ REM song right after writing the two .ym files -- one neural pass, correct mix.
 
 set PY=%~dp0.venv\Scripts\python.exe
 
-"%PY%" scripts\convert_long_dual.py --separation demucs-ft --vocals lead --vibrato vocals --noise-volume 0.5 --arpeggio --out-dir results\demucs-ft_dual %* --explain 
+"%PY%" scripts\convert_long_dual.py --separation demucs-ft --vocals lead --vibrato vocals --noise-volume 0.5 --arpeggio --out-dir results\demucs-ft_dual_arpeggio %* --explain 
 if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
 
 echo.
