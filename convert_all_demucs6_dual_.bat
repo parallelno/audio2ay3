@@ -1,0 +1,5 @@
+.\.venv\Scripts\python.exe -m audio2ay3 preview "samples\long\00.m4a" --separation demucs-ft --chips 2 --noise-volume 0.5 -o "results\00.mp3"
+.\.venv\Scripts\python.exe -m audio2ay3 preview "samples\long\01.m4a" --separation demucs-ft --chips 2 --noise-volume 0.5 -o "results\01.mp3"
+.\.venv\Scripts\python.exe -m audio2ay3 preview "samples\long\02.m4a" --separation demucs-ft --chips 2 --noise-volume 0.5 -o "results\02.mp3"
+.\.venv\Scripts\python.exe -m audio2ay3 preview "samples\long\03.m4a" --separation demucs-ft --chips 2 --noise-volume 0.5 -o "results\03.mp3"
+.\.venv\Scripts\python.exe -m audio2ay3 preview "samples\long\04.m4a" --separation demucs-ft --chips 2 --noise-volume 0.5 -o "results\04.mp3"

@@ -11,7 +11,7 @@ REM `validate <name>.ym` would render only chip 0).
 
 set PY=C:\Users\parallelno\AppData\Local\Programs\Python\Python312\python.exe
 
-"%PY%" scripts\convert_long_dual.py --separation demucs6 --out-dir results\demucs6_dual %*
+"%PY%" scripts\convert_long_dual.py --separation demucs6 --noise-volume 0.5 --out-dir results\demucs6_dual %*
 if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
 
 echo.
