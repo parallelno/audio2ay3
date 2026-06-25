@@ -111,7 +111,9 @@ def _separate_demucs(
     model_sr = model.samplerate
 
     # Demucs wants (batch, channels, samples) at the model's sample rate.
-    wav = torch.from_numpy(np.ascontiguousarray(audio, dtype=np.float32))
+    # np.array(copy=True) yields a writable, contiguous buffer so torch.from_numpy
+    # doesn't warn about sharing memory with a read-only NumPy array.
+    wav = torch.from_numpy(np.array(audio, dtype=np.float32, copy=True))
     if sr != model_sr:
         import torchaudio
 

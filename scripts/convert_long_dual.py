@@ -80,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
                     help="output register-dump format: 'ym' (YM6, two files per song: "
                          "<name>.ym + <name>.ay2.ym; default) or 'vtx' (Vortex Tracker, "
                          "single file with turboAY chipType=2 for dual-AY)")
+    ap.add_argument("--explain", action="store_true",
+                    help="after each song, print register-level diagnostics plus a voice-"
+                         "contention report (mirrors the CLI's --explain)")
     args = ap.parse_args(argv)
 
     # Imported lazily (after arg parsing) so ``--help`` works without dragging in the heavy
@@ -174,8 +177,9 @@ def main(argv: list[str] | None = None) -> int:
 
         print(f"[{i}/{len(inputs)}] {src.name} ...", flush=True)
         t0 = time.time()
+        trace: list | None = [] if args.explain else None
         try:
-            song = convert(str(src), cfg, name=song_name)      # one neural pass
+            song = convert(str(src), cfg, name=song_name, trace=trace)  # one neural pass
             reg_paths = _write_song(song, str(out_reg), fmt)
             renderer.render_to_file(song, str(out_mp3), bitrate_kbps=cfg.mp3_bitrate_kbps)
         except Exception as exc:  # batch driver: report and keep going to the next song
@@ -187,6 +191,13 @@ def main(argv: list[str] | None = None) -> int:
         print(f"    ok: {song.n_frames} frames ({song.duration_s:.1f}s) in {dt:.1f} min")
         print(f"    -> {', '.join(reg_paths)}")
         print(f"    -> {out_mp3}")
+        if args.explain:
+            from audio2ay3.explain import describe_song
+            from audio2ay3.mapping.contention import describe_contention, voice_contention
+
+            print(describe_song(song))
+            if trace:
+                print(describe_contention(voice_contention(trace[0], cfg)))
 
     done = len(inputs) - len(failures)
     print(f"\nDone: {done}/{len(inputs)} succeeded -> {out_dir}")
