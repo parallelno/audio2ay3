@@ -139,6 +139,14 @@ class RunConfig:
     # at once than there are free tone channels (the classic chiptune "arpeggio chord").
     # Opt-in: off by default.
     arpeggio: bool = False
+    # Vocal handling. The AY-3-8910 cannot reproduce a singing voice's timbre (no PCM, no
+    # formants), but the sung *melody* is usually the most recognisable line, so we can keep it
+    # as a square-wave lead. ``"off"`` drops the voice (default, historical behaviour);
+    # ``"lead"`` transcribes the vocal melody and tags it as a synth lead (sustained, vibrato-
+    # capable, high arrangement priority) so it sings over the backing; ``"piano"`` tags it as
+    # struck piano-style notes instead. Only effective on the Demucs separation + Basic Pitch /
+    # Onsets path — the multitrack ``mt3``/``yourmt3`` backends already transcribe the full mix.
+    vocals: Literal["off", "lead", "piano"] = "off"
     # When set, Demucs is skipped entirely: stems are loaded directly from
     # ``<stems_dir>/<song_name>/<song_name> (Synth|Bass|Drums|FX).<ext>``.
     # Any audio format supported by soundfile is accepted (.mp3, .wav, .flac …).

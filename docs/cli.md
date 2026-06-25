@@ -129,6 +129,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `--breath` | off | Add a short breathy noise chiff at the attack of wind voices (reeds/pipes). |
 | `--arpeggio` | off | When more notes sound than there are free channels, cycle the squeezed chord tones on one channel instead of dropping them (the classic chiptune arpeggio). |
 | `--noise-volume SCALE` | `1.0` | Noise channel volume as a linear scale. `1.0` = full (default), `0.5` = half as loud, `0.0` = muted. Applied uniformly to every amplitude frame the percussion renderer writes, so it scales the noise channel without touching the melodic tone channels. |
+| `--vocals {off,lead,piano}` | `off` | What to do with the sung voice. `off` drops it (default — the AY can't reproduce a voice's timbre). `lead` transcribes the vocal *melody* and renders it as a synth-lead square voice (sustained, vibrato-capable when `--vibrato` is on, high arrangement priority) so the tune carries over the backing. `piano` renders the same melody as struck piano-style notes instead. **Demucs + Basic Pitch / Onsets path only** — with `--separation none` there is no vocal stem to extract, and the `mt3`/`yourmt3` multitrack backends already transcribe the full mix (vocals included), so the flag is a no-op there. |
 | `--explain` | off | After writing the `.ym`, print register-level diagnostics for the arranged song plus a voice-contention report (how many notes were dropped for lack of channels, and an estimate of what a second AY would recover). See [Reading `--explain`](#reading---explain). |
 
 > `--vibrato`, `--breath`, and `--arpeggio` are opt-in timbre features (off by default). They were
@@ -262,6 +263,7 @@ is decoded via `ffmpeg` (must be on PATH).
 | `(Bass)` | Transcribed separately; placed on its own dedicated AY tone channel. |
 | `(Drums)` | Fed to the onset-detection stage; placed on the AY noise channel. |
 | `(FX)` | Mixed into `(Synth)` before transcription, adding tonal effects as extra notes. |
+| `(Vocals)` | Ignored unless `--vocals lead`/`piano` is set; then transcribed and folded into the melody as a square-wave lead/piano voice. |
 
 ### Single-song conversion
 

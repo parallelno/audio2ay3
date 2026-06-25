@@ -8,6 +8,7 @@ through the same emulator that ``validate`` uses.
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -217,13 +218,16 @@ def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_
     if cfg.transcription in ("mt3", "yourmt3"):
         progress.step("transcribing (multitrack)")
         return _build_transcription_multitrack(audio, sr, cfg)
+    keep_vocals = cfg.vocals != "off"
     # Mirrors stage_labels: the "separating stems" / "loading pre-separated stems" /
     # "detecting percussion" stages exist only when real separation runs OR stems_dir is set.
     if cfg.stems_dir is not None:
         from .analysis.separate import find_stems_folder, load_from_stems_dir
         if find_stems_folder(lookup_name, cfg.stems_dir) is not None:
             progress.step("loading pre-separated stems")
-            stems = load_from_stems_dir(lookup_name, cfg.stems_dir, sr)
+            stems = load_from_stems_dir(
+                lookup_name, cfg.stems_dir, sr, keep_vocals=keep_vocals
+            )
         else:
             import sys
             print(
@@ -233,11 +237,11 @@ def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_
             )
             if cfg.separation != "none":
                 progress.step("separating stems")
-            stems = separate_stems(audio, sr, cfg.separation)
+            stems = separate_stems(audio, sr, cfg.separation, keep_vocals=keep_vocals)
     else:
         if cfg.separation != "none":
             progress.step("separating stems")
-        stems = separate_stems(audio, sr, cfg.separation)
+        stems = separate_stems(audio, sr, cfg.separation, keep_vocals=keep_vocals)
     progress.step("transcribing")
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     # Follow each note's real loudness shape from its own stem so held notes sustain and plucks
@@ -261,6 +265,28 @@ def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_
                 bass_notes, stems.bass, stems.sr, cfg.chip.frame_rate_hz
             )
         tr.bass_notes = bass_notes
+    # Vocals: keep the sung *melody* as a lead voice. The AY can't reproduce a voice's timbre,
+    # but the melody is usually the most recognisable line, so transcribe the isolated vocal
+    # stem and fold its notes into the melodic pool, tagged with a GM program that drives the
+    # arranger: a synth lead (sustained + vibrato-capable + high priority) for "lead", or a
+    # struck piano for "piano". Only the separation path produces a vocal stem; the step is
+    # emitted whenever separation could have (matching stage_labels) so the progress bar stays
+    # aligned even when no vocal stem is actually present.
+    if cfg.vocals != "off" and (cfg.stems_dir is not None or cfg.separation != "none"):
+        progress.step("transcribing vocals")
+        if stems.vocals is not None:
+            voc_tr = transcribe(
+                stems.vocals, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz
+            )
+            voc_notes = voc_tr.notes
+            if cfg.amp_envelope.enabled:
+                voc_notes = attach_amp_contours(
+                    voc_notes, stems.vocals, stems.sr, cfg.chip.frame_rate_hz
+                )
+            # GM program 80 = Synth Lead (square): a lead-ranked, sustained, vibrato voice.
+            # GM program 0 = Acoustic Grand Piano: a neutral-ranked, struck voice.
+            program = 80 if cfg.vocals == "lead" else 0
+            tr.notes = tr.notes + [replace(n, program=program) for n in voc_notes]
     return tr
 
 
@@ -318,10 +344,14 @@ def stage_labels(cfg: RunConfig, *, render: bool) -> list[str]:
             labels.append("loading pre-separated stems")
             labels.append("transcribing")
             labels.append("detecting percussion")
+            if cfg.vocals != "off":
+                labels.append("transcribing vocals")
         elif cfg.separation != "none":
             labels.append("separating stems")
             labels.append("transcribing")
             labels.append("detecting percussion")
+            if cfg.vocals != "off":
+                labels.append("transcribing vocals")
         else:
             labels.append("transcribing")
     labels.append("arranging")

@@ -50,7 +50,7 @@ def test_demucs_modes_dispatch_to_separate_demucs(monkeypatch):
     """Each demucs* mode forwards the mapped model name to ``_separate_demucs``."""
     seen = {}
 
-    def fake_demucs(audio, sr, model_name="htdemucs"):
+    def fake_demucs(audio, sr, model_name="htdemucs", *, keep_vocals=False):
         seen["model"] = model_name
         return "sentinel"
 

@@ -43,6 +43,9 @@ class SeparationResult:
     drums: np.ndarray | None  # mono isolated drum stem, or None when unavailable
     bass: np.ndarray | None  # mono isolated bass stem, or None when unavailable
     sr: int
+    # Mono isolated vocal stem, kept only when ``keep_vocals=True`` so the sung melody can be
+    # transcribed into a lead voice; ``None`` otherwise (the historical "drop vocals" path).
+    vocals: np.ndarray | None = None
 
 
 # Friendly separation mode -> Demucs pretrained model name. ``htdemucs`` is the 4-source default;
@@ -55,7 +58,9 @@ _DEMUCS_MODELS = {
 }
 
 
-def separate_stems(audio: np.ndarray, sr: int, mode: str = "demucs") -> SeparationResult:
+def separate_stems(
+    audio: np.ndarray, sr: int, mode: str = "demucs", *, keep_vocals: bool = False
+) -> SeparationResult:
     """Split *audio* into a pitched instrumental plus isolated bass and drum stems.
 
     - ``none``      -> input is the instrumental, no bass/drum stems.
@@ -68,11 +73,15 @@ def separate_stems(audio: np.ndarray, sr: int, mode: str = "demucs") -> Separati
       (other + guitar + piano) into the instrumental. Those two extra stems are noisier than
       the core four, so treat it as experimental.
     - ``spleeter``  -> not wired yet.
+
+    When *keep_vocals* is true, the isolated vocal stem is returned in
+    :attr:`SeparationResult.vocals` (instead of being discarded) so the caller can transcribe
+    the sung melody into a lead voice. It stays ``None`` for ``mode="none"`` (no separation).
     """
     if mode == "none":
         return SeparationResult(instrumental=audio, drums=None, bass=None, sr=sr)
     if mode in _DEMUCS_MODELS:
-        return _separate_demucs(audio, sr, _DEMUCS_MODELS[mode])
+        return _separate_demucs(audio, sr, _DEMUCS_MODELS[mode], keep_vocals=keep_vocals)
     if mode == "spleeter":
         raise NotImplementedError(
             "Spleeter backend is not wired yet; use --separation demucs or none."
@@ -85,7 +94,9 @@ def separate(audio: np.ndarray, sr: int, mode: str = "demucs") -> np.ndarray:
     return separate_stems(audio, sr, mode).instrumental
 
 
-def _separate_demucs(audio: np.ndarray, sr: int, model_name: str = "htdemucs") -> SeparationResult:
+def _separate_demucs(
+    audio: np.ndarray, sr: int, model_name: str = "htdemucs", *, keep_vocals: bool = False
+) -> SeparationResult:
     try:
         import torch
         from demucs.apply import apply_model
@@ -122,6 +133,11 @@ def _separate_demucs(audio: np.ndarray, sr: int, model_name: str = "htdemucs") -
 
     drums_np = stem_mono("drums").cpu().numpy().astype(np.float32) if "drums" in names else None
     bass_np = stem_mono("bass").cpu().numpy().astype(np.float32) if "bass" in names else None
+    vocals_np = (
+        stem_mono("vocals").cpu().numpy().astype(np.float32)
+        if (keep_vocals and "vocals" in names)
+        else None
+    )
 
     if sr != model_sr:
         from .load_audio import _resample_linear
@@ -131,14 +147,20 @@ def _separate_demucs(audio: np.ndarray, sr: int, model_name: str = "htdemucs") -
             drums_np = _resample_linear(drums_np, model_sr, sr)
         if bass_np is not None:
             bass_np = _resample_linear(bass_np, model_sr, sr)
+        if vocals_np is not None:
+            vocals_np = _resample_linear(vocals_np, model_sr, sr)
 
-    return SeparationResult(instrumental=inst_np, drums=drums_np, bass=bass_np, sr=sr)
+    return SeparationResult(
+        instrumental=inst_np, drums=drums_np, bass=bass_np, sr=sr, vocals=vocals_np
+    )
 
 
 def load_from_stems_dir(
     name: str,
     stems_dir: Path | str,
     target_sr: int,
+    *,
+    keep_vocals: bool = False,
 ) -> "SeparationResult | None":
     """Load pre-separated stems from *stems_dir*/*name*/ instead of running Demucs.
 
@@ -148,13 +170,15 @@ def load_from_stems_dir(
     Returns ``None`` when no matching folder is found (caller should fall back to Demucs).
 
     Looks for ``<song_dir>/<name> (<StemType>).<ext>`` (falling back to ``(<StemType>).<ext>``
-    without the name prefix) where *StemType* is one of ``Synth``, ``Bass``, ``Drums``, ``FX``.
+    without the name prefix) where *StemType* is one of ``Synth``, ``Bass``, ``Drums``, ``FX``,
+    ``Vocals``.
 
     * **Synth** → ``instrumental`` (mandatory — raises :exc:`FileNotFoundError` if folder found
       but the Synth stem file is absent).
     * **Bass**  → ``bass`` (``None`` when file missing).
     * **Drums** → ``drums`` (``None`` when file missing).
     * **FX**    → mixed into ``instrumental`` when present; ignored otherwise.
+    * **Vocals** → ``vocals`` (only when *keep_vocals*; ``None`` when file missing).
     """
     from .load_audio import load_audio
 
@@ -218,4 +242,13 @@ def load_from_stems_dir(
     if bass_path is not None:
         bass, _ = load_audio(str(bass_path), sr)
 
-    return SeparationResult(instrumental=instrumental, drums=drums, bass=bass, sr=sr)
+    # --- Vocals (kept only on request, for transcribing the sung melody as a lead) ---
+    vocals: np.ndarray | None = None
+    if keep_vocals:
+        vocals_path = _find("Vocals")
+        if vocals_path is not None:
+            vocals, _ = load_audio(str(vocals_path), sr)
+
+    return SeparationResult(
+        instrumental=instrumental, drums=drums, bass=bass, sr=sr, vocals=vocals
+    )

@@ -94,6 +94,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         arpeggio=getattr(args, "arpeggio", False),
         stems_dir=Path(args.stems_dir) if getattr(args, "stems_dir", None) else None,
         noise_volume=getattr(args, "noise_volume", 1.0),
+        vocals=getattr(args, "vocals", "off"),
     )
 
 
@@ -263,6 +264,11 @@ def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
                     metavar="SCALE",
                     help="noise channel volume as a linear scale (default 1.0; "
                          "0.5 = half as loud; 0.0 = muted)")
+    sp.add_argument("--vocals", choices=["off", "lead", "piano"], default="off",
+                    help="keep the sung melody as a square-wave voice: 'off' drops vocals "
+                         "(default); 'lead' renders them as a synth lead (sustained, "
+                         "vibrato-capable); 'piano' as struck piano notes. Demucs + Basic "
+                         "Pitch path only (mt3/yourmt3 already transcribe the full mix)")
 
 
 def build_parser() -> argparse.ArgumentParser:
