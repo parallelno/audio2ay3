@@ -93,7 +93,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         breath=getattr(args, "breath", False),
         arpeggio=getattr(args, "arpeggio", False),
         stems_dir=Path(args.stems_dir) if getattr(args, "stems_dir", None) else None,
-        noise_volume=getattr(args, "drum_volume", 1.0),
+        noise_volume=getattr(args, "noise_volume", 1.0),
     )
 
 
