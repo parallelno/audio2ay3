@@ -13,8 +13,21 @@ REM song right after writing the two .ym files -- one neural pass, correct mix.
 
 set PY=%~dp0.venv\Scripts\python.exe
 
-"%PY%" scripts\convert_long_dual.py --separation demucs-ft --vocals lead --vibrato vocals --noise-volume 0.5 --arpeggio --out-dir results\demucs-ft_dual_arpeggio %* --explain 
-if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
+mkdir results\demucs-ft_dual 2>nul
+mkdir results\demucs-ft_dual\long_real 2>nul
+
+%PY% -m audio2ay3 preview "samples\long_chiptunes\00.m4a" -o "results\demucs-ft_dual\long_chiptunes\00.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_chiptunes\01.m4a" -o "results\demucs-ft_dual\long_chiptunes\01.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_chiptunes\02.m4a" -o "results\demucs-ft_dual\long_chiptunes\02.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_chiptunes\03.m4a" -o "results\demucs-ft_dual\long_chiptunes\03.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_chiptunes\04.m4a" -o "results\demucs-ft_dual\long_chiptunes\04.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+
+%PY% -m audio2ay3 preview "samples\long_real\00.m4a" -o "results\demucs-ft_dual\long_real\00.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_real\01.m4a" -o "results\demucs-ft_dual\long_real\01.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_real\02.m4a" -o "results\demucs-ft_dual\long_real\02.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_real\03.m4a" -o "results\demucs-ft_dual\long_real\03.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_real\04.m4a" -o "results\demucs-ft_dual\long_real\04.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
+%PY% -m audio2ay3 preview "samples\long_real\05.m4a" -o "results\demucs-ft_dual\long_real\05.mp3" --separation demucs-ft --chips 2 --noise-volume 0.5 --vocals lead --vibrato vocals --explain
 
 echo.
 echo All done -^> results\demucs-ft_dual\
