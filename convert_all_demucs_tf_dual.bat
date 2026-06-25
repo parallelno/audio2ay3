@@ -11,9 +11,9 @@ REM approach was broken for dual-AY: `validate <name>.ym` renders only chip 0, s
 REM dropped chip 1's voices. The driver renders the mixed .mp3 from the in-memory dual-chip
 REM song right after writing the two .ym files -- one neural pass, correct mix.
 
-set PY=C:\Users\parallelno\AppData\Local\Programs\Python\Python312\python.exe
+set PY=%~dp0.venv\Scripts\python.exe
 
-"%PY%" scripts\convert_long_dual.py --separation demucs-ft --out-dir results\demucs-ft_dual %*
+"%PY%" scripts\convert_long_dual.py --separation demucs-ft --vocals lead --vibrato vocals --noise-volume 0.5 --explain --out-dir results\demucs-ft_dual %*
 if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
 
 echo.

@@ -66,6 +66,16 @@ def main(argv: list[str] | None = None) -> int:
                     metavar="SCALE",
                     help="noise channel volume as a linear scale "
                          "(default 1.0; 0.5 = half as loud; 0.0 = muted)")
+    ap.add_argument("--vocals", choices=["off", "lead", "piano"], default="off",
+                    help="keep the sung melody as a square-wave voice: off (default, drops it), "
+                         "lead (synth lead, sustained/vibrato-capable), or piano (struck). "
+                         "Demucs + Basic Pitch path only.")
+    ap.add_argument("--vibrato", nargs="*", default=None, metavar="TARGET",
+                    help="pitch-LFO vibrato. Bare --vibrato wobbles the default GM families; or "
+                         "give a space/comma-separated list to restrict it to stems "
+                         "(melody/bass/vocals) and/or families (organ/strings/reed/pipe/lead), "
+                         "e.g. --vibrato vocals lead. Place it last so it doesn't swallow other "
+                         "options.")
     ap.add_argument("--format", choices=["ym", "vtx"], default="ym",
                     help="output register-dump format: 'ym' (YM6, two files per song: "
                          "<name>.ym + <name>.ay2.ym; default) or 'vtx' (Vortex Tracker, "
@@ -74,7 +84,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Imported lazily (after arg parsing) so ``--help`` works without dragging in the heavy
     # neural / numba stack.
-    from audio2ay3.cli import _write_song
+    from audio2ay3.cli import _build_vibrato, _write_song
     from audio2ay3.config import ChipConfig, RunConfig
     from audio2ay3.pipeline import convert
     from audio2ay3.render import Renderer
@@ -131,6 +141,12 @@ def main(argv: list[str] | None = None) -> int:
     fmt = args.format
     reg_ext = ".vtx" if fmt == "vtx" else ".ym"
 
+    try:
+        vibrato = _build_vibrato(args.vibrato)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     cfg = RunConfig(
         chip=ChipConfig(n_chips=2),          # dual-AY: 6 tone channels
         separation=args.separation,
@@ -138,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
         yourmt3_model=args.model,
         stems_dir=stems_dir_path,
         noise_volume=args.noise_volume,
+        vocals=args.vocals,
+        vibrato=vibrato,
     )
     renderer = Renderer(render_sr=cfg.render_sr, oversample=cfg.oversample)
 

@@ -10,7 +10,7 @@ REM
 REM Requires: pip install -e ".[yourmt3,mp3]"  and  `python -m audio2ay3 setup-yourmt3`
 REM (clones the GPL YourMT3 backend into the per-user cache; ships the YMT3+ checkpoint via LFS).
 
-set PY=C:\Users\parallelno\AppData\Local\Programs\Python\Python312\python.exe
+set PY=%~dp0.venv\Scripts\python.exe
 
 "%PY%" scripts\convert_long_dual.py --transcription yourmt3 --model "YMT3+" --separation none --out-dir results\ymt3plus_dual %*
 if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
