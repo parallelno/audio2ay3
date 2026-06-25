@@ -1,11 +1,12 @@
-"""Quantify how many melodic notes the 3-channel AY budget forces the arranger to drop.
+"""Quantify how many melodic notes the AY channel budget forces the arranger to drop.
 
-The arranger has three tone channels: A is the dedicated bass, B and C carry melody/harmony, and
-C is *also* stolen by every drum hit. So whenever bass and drums sound together the melody is
-squeezed onto a single channel (B), and any extra simultaneous notes are dropped for that frame.
-This module measures that loss and estimates how much a second AY chip would recover. It re-runs
-only the deterministic arrange-time policy (no neural transcription), so it is cheap and exact for
-the question "given these notes, how many could the chip actually voice?".
+The accounting mirrors the *actual* chip configuration (``cfg.chip``). On a single AY there are
+three tone channels: A is the dedicated bass, B and C carry melody/harmony, and the last channel
+is *also* stolen by every drum hit. With ``--chips 2`` the same roles spread over six channels
+(A=bass, B..E=melody, F also drums), so far fewer notes are squeezed out. This module replays the
+deterministic arrange-time policy for whatever chip count is configured (no neural transcription),
+so it is cheap and exact for the question "given these notes, how many could the chip actually
+voice?". For a single chip it also estimates how much a second AY would recover.
 """
 
 from __future__ import annotations
@@ -15,9 +16,8 @@ from dataclasses import dataclass
 from ..analysis.model import Transcription
 from ..config import RunConfig
 from ..encode.quantize import frames_for_duration
-from .percussion import PERCUSSION_CHANNEL, percussion_busy_frames
+from .percussion import percussion_busy_frames
 from .voices import (
-    N_CHANNELS,
     _bucket_by_frame,
     _priority,
     _spans_from_notes,
@@ -37,6 +37,7 @@ class ContentionStats:
 
     frames: int
     frame_rate_hz: int
+    n_chips: int  # chips the accounting is for (1 = single AY, 2 = dual-AY)
     melodic_notes: int
     notes_silenced: int  # melodic notes that never sound on any frame (fully starved)
     demanded_note_frames: int  # sum over frames of simultaneously-active melodic notes
@@ -66,15 +67,31 @@ def _end_seconds(tr: Transcription) -> float:
 
 
 def voice_contention(tr: Transcription, cfg: RunConfig) -> ContentionStats:
-    """Replay the arrange-time voice allocation and tally what the channel budget drops."""
+    """Replay the arrange-time voice allocation and tally what the channel budget drops.
+
+    The replay matches the configured chip count: ``cfg.chip.total_tone_channels`` tone channels
+    (3 for a single AY, 6 for dual-AY) with percussion parking on the last one, exactly as
+    :func:`pipeline.arrange` does. When only one chip is configured, the ``dual_*`` fields hold a
+    forward-looking estimate of how much a second AY would recover; with two chips already in use
+    there is no further chip, so those fields simply mirror the achieved totals.
+    """
     frame_rate = cfg.chip.frame_rate_hz
     n_frames = frames_for_duration(_end_seconds(tr), frame_rate)
+    n_chips = cfg.chip.n_chips
+    n_channels = cfg.chip.total_tone_channels
+    drum_channel = n_channels - 1  # pipeline parks percussion on the last tone channel
+    # A single extra AY dedicates one channel to bass and one to drums, leaving the rest for
+    # melody. Only meaningful below the 2-chip ceiling; 0 disables the estimate.
+    estimate_channels = (n_channels + 1) if n_chips < 2 else 0
 
     active_by_frame = _bucket_by_frame(
         _spans_from_notes(tr.notes, frame_rate, n_frames), n_frames
     )
     _, reserved = place_bass(tr.bass_notes, frame_rate, n_frames)
-    assignment = allocate_voices(tr.notes, frame_rate, n_frames, reserved=reserved)
+    assignment = allocate_voices(
+        tr.notes, frame_rate, n_frames, reserved=reserved,
+        n_channels=n_channels, arpeggiate=cfg.arpeggio,
+    )
     drum_busy = percussion_busy_frames(tr.percussion, frame_rate, n_frames)
 
     demanded = sounded = dropped_to_drums = 0
@@ -94,13 +111,13 @@ def voice_contention(tr: Transcription, cfg: RunConfig) -> ContentionStats:
         if drum_busy[f]:
             drum_frames += 1
 
-        # Real single-chip outcome: replay the allocator, then let a drum overwrite channel C.
+        # Real outcome: replay the allocator, then let a drum overwrite the percussion channel.
         placed = 0
-        for ch in range(N_CHANNELS):
+        for ch in range(n_channels):
             voice = assignment[f][ch]
             if voice is None:
                 continue
-            if ch == PERCUSSION_CHANNEL and drum_busy[f]:
+            if ch == drum_channel and drum_busy[f]:
                 dropped_to_drums += 1  # placed, but the drum clobbers it this frame
                 continue
             sounded += 1
@@ -109,16 +126,21 @@ def voice_contention(tr: Transcription, cfg: RunConfig) -> ContentionStats:
         if placed < demand:
             contention_frames += 1
 
-        # Dual-chip estimate: four melodic channels by priority, drums on their own channel.
-        if demand:
-            ranked = sorted(active, key=_priority)[:DUAL_MELODIC_CHANNELS]
+        # Next-chip-up estimate: melodic channels by priority, bass and drums isolated.
+        if estimate_channels and demand:
+            ranked = sorted(active, key=_priority)[:estimate_channels]
             dual_sounded += len(ranked)
             dual_ids.update(s.note_id for s in ranked)
 
     melodic = len(tr.notes)
+    if not estimate_channels:
+        # Already at the chip ceiling: the "estimate" is just the achieved result.
+        dual_sounded = sounded
+        dual_ids = sounded_ids
     return ContentionStats(
         frames=n_frames,
         frame_rate_hz=frame_rate,
+        n_chips=n_chips,
         melodic_notes=melodic,
         notes_silenced=sum(1 for i in range(melodic) if i not in sounded_ids),
         demanded_note_frames=demanded,
@@ -144,25 +166,34 @@ def describe_contention(stats: ContentionStats) -> str:
     dem = stats.demanded_note_frames
     notes = stats.melodic_notes
     hist = stats.demand_hist
-    recovered = stats.dual_sounded_note_frames - stats.sounded_note_frames
-    return "\n".join(
-        [
-            "Voice contention (single AY: A=bass, B/C=melody, C also drums):",
-            f"  melodic notes:             {notes}",
-            f"  notes never sounded:       {stats.notes_silenced} ({pct(stats.notes_silenced, notes)})",
-            f"  note-frames demanded:      {dem}",
-            f"  note-frames sounded:       {stats.sounded_note_frames} ({pct(stats.sounded_note_frames, dem)})",
-            f"  dropped, no free channel:  {stats.dropped_capacity} ({pct(stats.dropped_capacity, dem)})",
-            f"  dropped, drum stole C:     {stats.dropped_to_drums} ({pct(stats.dropped_to_drums, dem)})",
-            f"  frames with contention:    {stats.contention_frames} ({pct(stats.contention_frames, frames)})",
-            f"  bass holds channel A:      {stats.bass_frames} ({pct(stats.bass_frames, frames)})",
-            f"  drums steal channel C:     {stats.drum_frames} ({pct(stats.drum_frames, frames)})",
-            "  simultaneous melodic demand: "
-            + " ".join(f"{i}:{hist[i]}" for i in range(5))
-            + f" 5+:{hist[5]}",
+    dual = stats.n_chips >= 2
+    drum_channel = "F" if dual else "C"
+    header = (
+        "Voice contention (dual AY: A=bass, B/C/D/E=melody, F also drums):"
+        if dual
+        else "Voice contention (single AY: A=bass, B/C=melody, C also drums):"
+    )
+    lines = [
+        header,
+        f"  melodic notes:             {notes}",
+        f"  notes never sounded:       {stats.notes_silenced} ({pct(stats.notes_silenced, notes)})",
+        f"  note-frames demanded:      {dem}",
+        f"  note-frames sounded:       {stats.sounded_note_frames} ({pct(stats.sounded_note_frames, dem)})",
+        f"  dropped, no free channel:  {stats.dropped_capacity} ({pct(stats.dropped_capacity, dem)})",
+        f"  dropped, drum stole {drum_channel}:     {stats.dropped_to_drums} ({pct(stats.dropped_to_drums, dem)})",
+        f"  frames with contention:    {stats.contention_frames} ({pct(stats.contention_frames, frames)})",
+        f"  bass holds channel A:      {stats.bass_frames} ({pct(stats.bass_frames, frames)})",
+        f"  drums steal channel {drum_channel}:     {stats.drum_frames} ({pct(stats.drum_frames, frames)})",
+        "  simultaneous melodic demand: "
+        + " ".join(f"{i}:{hist[i]}" for i in range(5))
+        + f" 5+:{hist[5]}",
+    ]
+    if not dual:
+        recovered = stats.dual_sounded_note_frames - stats.sounded_note_frames
+        lines += [
             "  estimate with a 2nd AY chip (4 melodic channels, drums isolated):",
             f"    note-frames would sound: {stats.dual_sounded_note_frames} ({pct(stats.dual_sounded_note_frames, dem)})",
             f"    notes still silent:      {stats.dual_notes_silenced} ({pct(stats.dual_notes_silenced, notes)})",
             f"    recovered vs single AY:  +{recovered} note-frames ({pct(recovered, dem)} of demand)",
         ]
-    )
+    return "\n".join(lines)

@@ -122,3 +122,27 @@ def test_describe_contention_reports_the_dual_chip_estimate():
     assert "recovered vs single AY" in text
     # Five notes at once but only DUAL_MELODIC_CHANNELS voice under the estimate.
     assert stats.dual_sounded_note_frames == DUAL_MELODIC_CHANNELS * stats.frames
+
+
+def test_chips_two_replays_the_dual_chip_budget():
+    # With --chips 2 the arranger has six tone channels, so five simultaneous notes all sound
+    # (vs. the single chip dropping the 4th/5th). The contention report must reflect that real
+    # layout instead of the single-AY budget.
+    from audio2ay3.config import ChipConfig
+
+    notes = [Note(0.0, 0.2, 400.0 + 50 * i, 1.0 - 0.1 * i) for i in range(5)]
+    cfg = RunConfig(chip=ChipConfig(n_chips=2))
+    stats = voice_contention(Transcription(notes=notes, duration_s=0.2), cfg)
+
+    assert stats.n_chips == 2
+    assert stats.notes_silenced == 0          # six channels comfortably fit five notes
+    assert stats.dropped_capacity == 0
+    assert stats.contention_frames == 0
+    assert stats.sounded_note_frames == stats.demanded_note_frames
+
+    text = describe_contention(stats)
+    assert "dual AY" in text
+    # No forward-looking estimate at the 2-chip ceiling.
+    assert "2nd AY" not in text
+    assert "recovered vs single AY" not in text
+

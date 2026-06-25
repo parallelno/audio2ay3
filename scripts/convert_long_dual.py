@@ -76,6 +76,10 @@ def main(argv: list[str] | None = None) -> int:
                          "(melody/bass/vocals) and/or families (organ/strings/reed/pipe/lead), "
                          "e.g. --vibrato vocals lead. Place it last so it doesn't swallow other "
                          "options.")
+    ap.add_argument("--arpeggio", action="store_true",
+                    help="when more notes sound than there are free channels, cycle the squeezed "
+                         "chord tones on one channel instead of dropping them (classic chiptune "
+                         "arpeggio)")
     ap.add_argument("--format", choices=["ym", "vtx"], default="ym",
                     help="output register-dump format: 'ym' (YM6, two files per song: "
                          "<name>.ym + <name>.ay2.ym; default) or 'vtx' (Vortex Tracker, "
@@ -159,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
         noise_volume=args.noise_volume,
         vocals=args.vocals,
         vibrato=vibrato,
+        arpeggio=args.arpeggio,
     )
     renderer = Renderer(render_sr=cfg.render_sr, oversample=cfg.oversample)
 
