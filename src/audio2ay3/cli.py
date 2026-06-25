@@ -69,8 +69,35 @@ def _make_progress(args: argparse.Namespace, cfg, *, render: bool):
     return ProgressReporter(progress_total(cfg, render=render))
 
 
+def _build_vibrato(values: list[str] | None):
+    """Map the ``--vibrato`` arg to a :class:`Vibrato` config.
+
+    ``None``  -> flag absent: vibrato off.
+    ``[]``    -> bare ``--vibrato``: on, the historical family gate.
+    ``[...]`` -> on, restricted to the named stems/families (comma- or space-separated).
+    """
+    from .config import Vibrato
+    from .mapping import VIBRATO_TARGET_NAMES
+
+    if values is None:
+        return Vibrato(enabled=False)
+    targets: list[str] = []
+    for value in values:
+        for tok in value.split(","):
+            tok = tok.strip().lower()
+            if not tok:
+                continue
+            if tok not in VIBRATO_TARGET_NAMES:
+                raise ValueError(
+                    f"unknown --vibrato target {tok!r}; choose from "
+                    f"{', '.join(VIBRATO_TARGET_NAMES)}"
+                )
+            targets.append(tok)
+    return Vibrato(enabled=True, targets=tuple(dict.fromkeys(targets)))
+
+
 def _build_run_config(args: argparse.Namespace) -> RunConfig:
-    from .config import AmpEnvelope, Vibrato
+    from .config import AmpEnvelope
 
     base = ChipConfig()
     chip = ChipConfig(
@@ -89,7 +116,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         mp3_bitrate_kbps=getattr(args, "bitrate", 192),
         seed=getattr(args, "seed", 0),
         amp_envelope=AmpEnvelope(enabled=not getattr(args, "no_amp_envelope", False)),
-        vibrato=Vibrato(enabled=getattr(args, "vibrato", False)),
+        vibrato=_build_vibrato(getattr(args, "vibrato", None)),
         breath=getattr(args, "breath", False),
         arpeggio=getattr(args, "arpeggio", False),
         stems_dir=Path(args.stems_dir) if getattr(args, "stems_dir", None) else None,
@@ -140,7 +167,11 @@ def cmd_convert(args: argparse.Namespace) -> int:
 
     fmt = getattr(args, "format", "ym")
     default_ext = ".vtx" if fmt == "vtx" else ".ym"
-    cfg = _build_run_config(args)
+    try:
+        cfg = _build_run_config(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 3
     out = args.output or _default_out(args.input, default_ext)
     Path(out).parent.mkdir(parents=True, exist_ok=True)
 
@@ -173,7 +204,11 @@ def cmd_convert(args: argparse.Namespace) -> int:
 def cmd_preview(args: argparse.Namespace) -> int:
     from .pipeline import preview
 
-    cfg = _build_run_config(args)
+    try:
+        cfg = _build_run_config(args)
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 3
     ext = ".wav" if args.wav else ".mp3"
     out = args.output or _default_out(args.input, ext)
 
@@ -251,9 +286,13 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
 def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
     sp.add_argument("--no-amp-envelope", action="store_true", dest="no_amp_envelope",
                     help="disable per-note amplitude shaping (flat, constant-volume notes)")
-    sp.add_argument("--vibrato", action="store_true",
-                    help="add a pitch-LFO vibrato to expressive voices "
-                         "(organ/strings/reed/pipe/synth lead)")
+    sp.add_argument("--vibrato", nargs="*", default=None, metavar="TARGET",
+                    help="add a pitch-LFO vibrato to expressive voices. Bare --vibrato wobbles "
+                         "the default GM families (organ/strings/reed/pipe/lead). Optionally "
+                         "follow it with a space- or comma-separated list to restrict the wobble "
+                         "to stems (melody/bass/vocals) and/or families "
+                         "(organ/strings/reed/pipe/lead), e.g. --vibrato vocals lead. Put the "
+                         "input file before this flag when using the list form.")
     sp.add_argument("--breath", action="store_true",
                     help="add a breathy noise chiff at the attack of wind voices (reeds/pipes)")
     sp.add_argument("--arpeggio", action="store_true",

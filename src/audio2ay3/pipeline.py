@@ -34,9 +34,9 @@ from .mapping import (
     apply_percussion,
     is_breath_program,
     is_sustained_program,
-    is_vibrato_program,
     percussion_busy_frames,
     place_bass,
+    wants_vibrato,
 )
 from .progress import NullProgress, Progress
 from .ymformat.model import YmSong
@@ -109,7 +109,7 @@ def arrange(tr: Transcription, cfg: RunConfig, name: str = "") -> YmSong:
             # Vibrato: a small pitch LFO on idiomatically-expressive instruments (flute/strings/
             # reed/organ/synth lead) makes a bare square read as a living tone. Period is the
             # inverse of frequency, so a sharp-by-c-cents frame divides the period accordingly.
-            if vib.enabled and is_vibrato_program(voice.program):
+            if vib.enabled and wants_vibrato(voice.program, voice.stem, vib.targets):
                 cents = vib.cents(age[ch], frame_rate)
                 if cents:
                     tone_period = max(
@@ -250,6 +250,9 @@ def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_
         tr.notes = attach_amp_contours(
             tr.notes, stems.instrumental, stems.sr, cfg.chip.frame_rate_hz
         )
+    # Tag these as the melodic stem so per-stem effects (e.g. --vibrato melody) can target them
+    # even on Basic Pitch, which assigns no GM program.
+    tr.notes = [replace(n, stem="melody") for n in tr.notes]
     if stems.drums is not None:
         progress.step("detecting percussion")
         # Reference the whole-track RMS so a drum-less stem's residual bleed can't fire phantom
@@ -264,7 +267,7 @@ def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_
             bass_notes = attach_amp_contours(
                 bass_notes, stems.bass, stems.sr, cfg.chip.frame_rate_hz
             )
-        tr.bass_notes = bass_notes
+        tr.bass_notes = [replace(n, stem="bass") for n in bass_notes]
     # Vocals: keep the sung *melody* as a lead voice. The AY can't reproduce a voice's timbre,
     # but the melody is usually the most recognisable line, so transcribe the isolated vocal
     # stem and fold its notes into the melodic pool, tagged with a GM program that drives the
@@ -286,7 +289,9 @@ def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_
             # GM program 80 = Synth Lead (square): a lead-ranked, sustained, vibrato voice.
             # GM program 0 = Acoustic Grand Piano: a neutral-ranked, struck voice.
             program = 80 if cfg.vocals == "lead" else 0
-            tr.notes = tr.notes + [replace(n, program=program) for n in voc_notes]
+            tr.notes = tr.notes + [
+                replace(n, program=program, stem="vocals") for n in voc_notes
+            ]
     return tr
 
 

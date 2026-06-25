@@ -125,7 +125,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | Option | Default | Meaning |
 |--------|---------|---------|
 | `--no-amp-envelope` | off | Disable per-note amplitude shaping; notes become flat, constant-volume blocks. By default each note follows its source loudness with a struck attack/decay. |
-| `--vibrato` | off | Add a small pitch-LFO vibrato to expressive voices (organ, strings, reed, pipe, synth lead). |
+| `--vibrato [TARGET ...]` | off | Add a small pitch-LFO vibrato to expressive voices. Bare `--vibrato` wobbles the default GM families (organ, strings, reed, pipe, synth lead). Optionally follow it with a space- or comma-separated list to **restrict** the wobble to specific **stems** (`melody`, `bass`, `vocals`) and/or **families** (`organ`, `strings`, `reed`, `pipe`, `lead`) — e.g. `--vibrato vocals lead`. Stem targets work on any backend (including Basic Pitch, which assigns no instrument identity); family targets only bite when a backend supplies GM programs (`mt3`/`yourmt3`, or the `--vocals lead` voice). Put the input file **before** this flag when using the list form, since it consumes following words. |
 | `--breath` | off | Add a short breathy noise chiff at the attack of wind voices (reeds/pipes). |
 | `--arpeggio` | off | When more notes sound than there are free channels, cycle the squeezed chord tones on one channel instead of dropping them (the classic chiptune arpeggio). |
 | `--noise-volume SCALE` | `1.0` | Noise channel volume as a linear scale. `1.0` = full (default), `0.5` = half as loud, `0.0` = muted. Applied uniformly to every amplitude frame the percussion renderer writes, so it scales the noise channel without touching the melodic tone channels. |

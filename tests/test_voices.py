@@ -16,6 +16,7 @@ from audio2ay3.mapping.voices import (
     is_breath_program,
     is_sustained_program,
     is_vibrato_program,
+    wants_vibrato,
 )
 
 
@@ -93,6 +94,37 @@ def test_is_vibrato_and_breath_program_families():
     assert not is_breath_program(40)  # Bowed strings -> no breath
     assert not is_breath_program(16)  # Organ
     assert not is_breath_program(None)
+
+
+def test_wants_vibrato_no_targets_uses_family_gate():
+    # With no targets it falls back to the historical program-family gate.
+    assert wants_vibrato(73, "melody", ())  # flute family -> wobbles
+    assert not wants_vibrato(0, "melody", ())  # piano -> steady
+    assert not wants_vibrato(None, "melody", ())  # Basic Pitch (no program) -> steady
+
+
+def test_wants_vibrato_stem_target_matches_program_less_notes():
+    # A stem token wobbles every note of that stem, even program-less Basic Pitch notes.
+    assert wants_vibrato(None, "vocals", ("vocals",))
+    assert wants_vibrato(None, "melody", ("melody",))
+    assert not wants_vibrato(None, "melody", ("vocals",))  # other stems stay steady
+    assert not wants_vibrato(None, "bass", ("vocals", "lead"))
+
+
+def test_wants_vibrato_family_target_matches_by_program():
+    # A family token only bites when a GM program is present.
+    assert wants_vibrato(81, "melody", ("lead",))  # synth lead
+    assert wants_vibrato(40, "melody", ("strings",))  # violin
+    assert not wants_vibrato(40, "melody", ("lead",))  # strings != lead
+    assert not wants_vibrato(None, "melody", ("lead",))  # no program -> no family match
+
+
+def test_wants_vibrato_mixed_stem_and_family_targets():
+    # Both kinds of token can appear in one list (the "both" design).
+    targets = ("vocals", "lead")
+    assert wants_vibrato(0, "vocals", targets)  # vocal stem (piano-tagged) still wobbles
+    assert wants_vibrato(81, "melody", targets)  # a synth lead in the melody wobbles
+    assert not wants_vibrato(40, "melody", targets)  # strings: neither stem nor family named
 
 
 def test_arpeggiate_cycles_overflow_instead_of_dropping():

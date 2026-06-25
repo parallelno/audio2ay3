@@ -103,6 +103,11 @@ class Vibrato:
     depth_cents: float = 22.0  # peak pitch deviation either side of the note
     onset_delay_frames: int = 3  # hold a clean, in-tune attack before the wobble starts
     ramp_frames: int = 5  # frames to grow the depth from 0 to full after the delay
+    # Optional scoping for which notes wobble. Empty = the historical family gate
+    # (organ/strings/reed/pipe/lead). Otherwise a note qualifies when its source stem
+    # ("melody"/"bass"/"vocals") or GM family ("organ"/"strings"/"reed"/"pipe"/"lead") is named
+    # here — lets the user narrow an over-wobbly mix to specific stems/instruments.
+    targets: tuple[str, ...] = ()
 
     def cents(self, age_frames: int, frame_rate_hz: int) -> float:
         """Signed pitch offset (in cents) for a note *age_frames* into its life."""

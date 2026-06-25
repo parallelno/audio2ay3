@@ -27,3 +27,31 @@ def test_preview_also_wires_timbre_flags():
     assert cfg.arpeggio is True
     assert cfg.vibrato.enabled is False
     assert cfg.breath is False
+
+
+def test_bare_vibrato_enables_with_no_targets():
+    cfg = _convert_cfg("--vibrato")
+    assert cfg.vibrato.enabled is True
+    assert cfg.vibrato.targets == ()  # default family gate
+
+
+def test_vibrato_target_list_space_and_comma_separated():
+    # Tokens may be split across argv words and/or comma-joined; order is preserved, deduped.
+    cfg = _convert_cfg("--vibrato", "vocals", "lead,strings", "vocals")
+    assert cfg.vibrato.enabled is True
+    assert cfg.vibrato.targets == ("vocals", "lead", "strings")
+
+
+def test_vibrato_stops_at_next_flag():
+    # nargs="*" must not swallow the following option; --vibrato stays target-less here.
+    cfg = _convert_cfg("--vibrato", "--breath")
+    assert cfg.vibrato.enabled is True
+    assert cfg.vibrato.targets == ()
+    assert cfg.breath is True
+
+
+def test_unknown_vibrato_target_raises_value_error():
+    import pytest
+
+    with pytest.raises(ValueError, match="unknown --vibrato target 'guitar'"):
+        _convert_cfg("--vibrato", "guitar")

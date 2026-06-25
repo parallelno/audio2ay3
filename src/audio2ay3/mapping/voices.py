@@ -38,6 +38,9 @@ class Voice:
     # General-MIDI program of the source note (``None`` for Basic Pitch / synthetic), so the
     # arranger can hold a sustained instrument legato instead of imposing a struck decay.
     program: int | None = None
+    # Source stem this voice came from ("melody"/"bass"/"vocals"), or ``None`` when unknown,
+    # so the arranger can scope per-stem effects such as vibrato.
+    stem: str | None = None
 
 
 @dataclass
@@ -49,6 +52,7 @@ class _Span:
     velocity: float
     contour: tuple[float, ...] = ()
     program: int | None = None
+    stem: str | None = None
 
 
 def _contour_scale(span: _Span, frame: int) -> float | None:
@@ -129,6 +133,53 @@ def is_vibrato_program(program: int | None) -> bool:
     return program is not None and program in _VIBRATO_PROGRAMS
 
 
+# The GM families that idiomatically vibrato, named so ``--vibrato`` can target each one
+# individually. Their union is exactly ``_VIBRATO_PROGRAMS`` above, so a bare ``--vibrato``
+# (no targets) is unchanged.
+_VIBRATO_FAMILY_RANGES = {
+    "organ": range(16, 24),
+    "strings": range(40, 48),
+    "reed": range(64, 72),
+    "pipe": range(72, 80),
+    "lead": range(80, 88),
+}
+# Source stems a note can come from (see :attr:`analysis.model.Note.stem`).
+VIBRATO_STEM_NAMES = ("melody", "bass", "vocals")
+VIBRATO_FAMILY_NAMES = tuple(_VIBRATO_FAMILY_RANGES)
+# Every valid ``--vibrato`` target token (stems first, then families).
+VIBRATO_TARGET_NAMES = VIBRATO_STEM_NAMES + VIBRATO_FAMILY_NAMES
+
+
+def _vibrato_family(program: int | None) -> str | None:
+    """Name of the vibrato GM family *program* belongs to, or ``None``."""
+    if program is None:
+        return None
+    for fam, rng in _VIBRATO_FAMILY_RANGES.items():
+        if program in rng:
+            return fam
+    return None
+
+
+def wants_vibrato(
+    program: int | None, stem: str | None, targets: tuple[str, ...] = ()
+) -> bool:
+    """Whether a note should get vibrato.
+
+    With no *targets* this is the historical gate: the note's GM family must idiomatically
+    vibrato (organ/strings/reed/pipe/synth lead). With *targets*, the note instead qualifies
+    when its source *stem* is named (so a program-less Basic Pitch melody can still wobble) or
+    its GM *family* is named — letting the user narrow an over-wobbly mix to specific
+    stems/instruments.
+    """
+    if not targets:
+        return is_vibrato_program(program)
+    if stem is not None and stem in targets:
+        return True
+    fam = _vibrato_family(program)
+    return fam is not None and fam in targets
+
+
+
 def is_breath_program(program: int | None) -> bool:
     """Whether a GM *program* should get a breathy noise chiff at each note's attack."""
     return program is not None and program in _BREATH_PROGRAMS
@@ -156,6 +207,7 @@ def _spans_from_notes(
                     note.velocity,
                     note.amp_contour,
                     note.program,
+                    note.stem,
                 )
             )
     return spans
@@ -198,7 +250,7 @@ def place_bass(
         # note and a melodic note that share an index can never be mistaken for one held note
         # when channel A flips between them (the arranger keys its envelope off note identity).
         bass_voices[f] = Voice(
-            s.pitch_hz, s.velocity, -(s.note_id + 1), _contour_scale(s, f), s.program
+            s.pitch_hz, s.velocity, -(s.note_id + 1), _contour_scale(s, f), s.program, s.stem
         )
         reserved[f] = channel
     return bass_voices, reserved
@@ -250,7 +302,7 @@ def allocate_voices(
             if pid is not None and pid in by_id:
                 s = by_id[pid]
                 current[ch] = Voice(
-                    s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program
+                    s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program, s.stem
                 )
                 taken.add(pid)
 
@@ -261,7 +313,7 @@ def allocate_voices(
         )
         for ch, s in zip(free, remaining):
             current[ch] = Voice(
-                s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program
+                s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program, s.stem
             )
             taken.add(s.note_id)
 
@@ -281,7 +333,7 @@ def allocate_voices(
                 )
                 s = group[f % len(group)]
                 current[arp_ch] = Voice(
-                    s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program
+                    s.pitch_hz, s.velocity, s.note_id, _contour_scale(s, f), s.program, s.stem
                 )
 
         assignment[f] = current

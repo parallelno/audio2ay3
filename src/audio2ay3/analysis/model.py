@@ -32,6 +32,11 @@ class Note:
     # ``None`` (Basic Pitch is pitch-only). The arranger uses it to keep a lead audible over a
     # pad when tone channels are scarce (see :func:`mapping.voices._program_rank`).
     program: int | None = None
+    # Which separated source this note came from: ``"melody"`` (instrumental stem), ``"bass"``
+    # (bass stem), or ``"vocals"`` (sung melody kept via ``--vocals``); ``None`` when unknown
+    # (e.g. the multitrack backends, which don't separate stems). Lets the arranger scope
+    # per-stem effects such as vibrato even when the backend gives no GM program.
+    stem: str | None = None
 
     @property
     def offset_s(self) -> float:
