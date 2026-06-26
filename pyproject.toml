@@ -17,6 +17,9 @@ dependencies = [
 [project.optional-dependencies]
 mp3 = ["lameenc>=1.7"]
 audio = ["soundfile>=0.12"]
+# MIDI export of the pre-arrangement transcription (audio2ay3 convert --save-midi). mido is a
+# small pure-Python dependency with no native build, so this extra is cheap to install.
+midi = ["mido>=1.3"]
 # Neural analysis stack (default conversion path; heavy, opt-in to install).
 # Python 3.11: `pip install -e ".[neural]"` resolves cleanly.
 # Python 3.12: basic-pitch 0.4.0 pins tensorflow>=2.4.1,<2.15.1 (no 3.12 wheels exist in that

@@ -306,6 +306,14 @@ starting point, but `demucs-ft` is worth the extra time for final-quality render
 > `--save-stems-format mp3` to write compact MP3s (~1/10th the size, encoded at `--bitrate`)
 > instead of lossless WAV when disk space matters on a big batch.
 
+> **Tip — review the transcription as MIDI.** Add `--save-midi` to write the **pre-arrangement**
+> transcription (every detected note, *before* the AY's 3-channel contention drops or quantizes
+> anything) as a Standard MIDI File next to the `-o` file as `<name>.mid`. Open it in any DAW to
+> check pitch/timing/loudness quality before it's flattened into registers: per-note loudness
+> rides on CC11 (Expression), the GM instrument label (when a backend provides one) becomes a
+> program change, and stems land on separate Melody/Bass/Vocals tracks with drums on GM
+> channel 10. Needs the `midi` extra (`pip install "audio2ay3[midi]"`).
+
 ---
 
 ## Usage

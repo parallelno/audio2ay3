@@ -98,7 +98,7 @@ hardware-legal `.ym` register stream. Needs the `neural` and `audio` extras.
 ```
 audio2ay3 convert <input-audio> [-o OUT]
                   [--separation {demucs,spleeter,none}] [--transcription {basic-pitch,mt3,yourmt3,onsets-frames}]
-                  [--yourmt3-model NAME] [--stems-dir DIR] [--save-stems] [--save-stems-format {wav,mp3}]
+                  [--yourmt3-model NAME] [--stems-dir DIR] [--save-stems] [--save-stems-format {wav,mp3}] [--save-midi]
                   [--clock HZ] [--frame-rate HZ] [--chips N] [--no-gpu] [--no-progress] [--seed N]
                   [--no-amp-envelope] [--explain]
 ```
@@ -121,6 +121,7 @@ audio2ay3 convert <input-audio> [-o OUT]
 | `--stems-dir DIR` | — | Load pre-separated stems from `<DIR>/<song-name>/` instead of running Demucs. The folder must contain `<song-name> (Synth).<ext>` — or `(Other)`, the raw Demucs source name, accepted as an alias (mandatory), and optionally `(Bass)`, `(Drums)`, `(FX)`, `(Guitar)`, and `(Piano)` files (`FX`/`Guitar`/`Piano` are mixed into the instrumental). When found, Demucs is skipped entirely and `--separation` is ignored. When `<DIR>/<song-name>/` does not exist, the pipeline falls back to Demucs normally. The folder name must match the audio filename stem exactly. Accepts MP3, WAV, FLAC, OGG, M4A. |
 | `--save-stems` | off | Write the **raw** separator output — every source, stereo, at the model's native sample rate, before the mono/sum/resample steps — next to the `-o` file as `<output-stem> (Vocals\|Drums\|Bass\|Other).<ext>` (plus `(Guitar)`/`(Piano)` for `demucs6`). A **no-op** unless a real separator runs: it does nothing with `--separation none`, the `mt3`/`yourmt3` multitrack backends (no separator stage), or `--stems-dir` (stems are already on disk). The dumped files round-trip straight back through `--stems-dir`. |
 | `--save-stems-format {wav,mp3}` | `wav` | Container for `--save-stems`. `wav` is lossless but large (~10 MB/min per stem). `mp3` is lossy and ~1/10th the size, encoded at `--bitrate` (needs the `mp3` extra / `lameenc`). Both keep the separator's native sample rate and stereo channels. |
+| `--save-midi` | off | Write the **pre-arrangement** transcription — every detected note, *before* AY channel contention drops or quantizes anything — as a Standard MIDI File next to the `-o` file as `<output-stem>.mid`. Useful for auditioning transcription quality in a DAW before it's flattened into registers. Pitches map to the nearest MIDI note, `velocity` to note-on velocity, the per-note loudness contour to CC11 (Expression) automation, and the GM instrument label (when a backend supplies one) to a program change; stems land on separate tracks (Melody/Bass/Vocals) and drums on GM channel 10. Needs the `midi` extra (`pip install "audio2ay3[midi]"`); if `mido` is missing the conversion still succeeds and a warning is printed. |
 
 ### Arrangement options
 
@@ -155,6 +156,9 @@ audio2ay3 convert samples\long\Goblins_Lair.mp3 -o build\goblins.ym --separation
 
 # ...or as compact MP3s to save disk on a big batch
 audio2ay3 convert samples\long\Goblins_Lair.mp3 -o build\goblins.ym --separation demucs-ft --save-stems --save-stems-format mp3
+
+# Export the transcription as MIDI to review its quality in a DAW (writes build\goblins.mid)
+audio2ay3 convert samples\long\Goblins_Lair.mp3 -o build\goblins.ym --save-midi
 
 # Flat, constant-volume notes plus the diagnostics dump
 audio2ay3 convert samples\long\Goblins_Lair.mp3 --no-amp-envelope --explain
@@ -216,7 +220,7 @@ quick A/B listening without a separate `validate` step. Needs the same extras as
 ```
 audio2ay3 preview <input-audio> [-o OUT] [--wav] [--sr N] [--oversample N] [--bitrate N]
                   [--duration SEC]
-                  [--separation ...] [--transcription ...] [--yourmt3-model NAME] [--stems-dir DIR] [--save-stems] [--save-stems-format {wav,mp3}]
+                  [--separation ...] [--transcription ...] [--yourmt3-model NAME] [--stems-dir DIR] [--save-stems] [--save-stems-format {wav,mp3}] [--save-midi]
                   [--clock HZ] [--frame-rate HZ]
                   [--chips N] [--no-gpu] [--no-progress] [--seed N] [--no-amp-envelope] [--explain]
 ```

@@ -60,6 +60,25 @@ def _write_song(song, out: str, fmt: str) -> list[str]:
     return [out]
 
 
+def _maybe_write_midi(args: argparse.Namespace, cfg, out: str, trace: list | None) -> None:
+    """Write the pre-arrangement transcription as a MIDI file next to *out* when --save-midi.
+
+    Best-effort: the ``.ym``/audio is already on disk, so a missing 'midi' extra is reported as a
+    warning rather than failing the whole conversion.
+    """
+    if not getattr(args, "save_midi", False) or not trace:
+        return
+    from .analysis.midi_export import write_transcription_midi
+
+    midi_path = Path(out).with_suffix(".mid")
+    try:
+        write_transcription_midi(trace[0], midi_path, cfg.chip.frame_rate_hz)
+    except RuntimeError as exc:
+        print(f"warning: --save-midi skipped: {exc}", file=sys.stderr)
+        return
+    print(f"midi: {midi_path}")
+
+
 def _make_progress(args: argparse.Namespace, cfg, *, render: bool):
     """A stage progress reporter for convert/preview, or ``None`` when disabled / non-interactive."""
     if getattr(args, "no_progress", False) or not sys.stderr.isatty():
@@ -180,7 +199,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
         cfg = replace(cfg, save_stems_dir=Path(out).parent)
 
     explain = getattr(args, "explain", False)
-    trace: list | None = [] if explain else None
+    trace: list | None = [] if (explain or getattr(args, "save_midi", False)) else None
     progress = _make_progress(args, cfg, render=False)
     try:
         song = convert(args.input, cfg, trace=trace, progress=progress)
@@ -194,6 +213,7 @@ def cmd_convert(args: argparse.Namespace) -> int:
     out_paths = _write_song(song, out, fmt)
     print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> "
           f"{', '.join(out_paths)}")
+    _maybe_write_midi(args, cfg, out, trace)
     if explain:
         from .explain import describe_song
 
@@ -219,7 +239,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
         cfg = replace(cfg, save_stems_dir=Path(out).parent)
 
     explain = getattr(args, "explain", False)
-    trace: list | None = [] if explain else None
+    trace: list | None = [] if (explain or getattr(args, "save_midi", False)) else None
     progress = _make_progress(args, cfg, render=True)
     try:
         song = preview(args.input, out, cfg, max_seconds=args.duration, trace=trace,
@@ -232,6 +252,7 @@ def cmd_preview(args: argparse.Namespace) -> int:
         return 3
 
     print(f"ok: {song.n_frames} frames ({song.duration_s:.1f}s) -> {out}")
+    _maybe_write_midi(args, cfg, out, trace)
     if explain:
         from .explain import describe_song
 
@@ -296,6 +317,11 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
                     choices=["wav", "mp3"], default="wav",
                     help="container for --save-stems: 'wav' (lossless, ~10 MB/min per stem; "
                          "default) or 'mp3' (lossy, ~1/10th the size, encoded at --bitrate)")
+    sp.add_argument("--save-midi", action="store_true", dest="save_midi",
+                    help="write the pre-arrangement transcription (every detected note, before "
+                         "AY channel contention) as a Standard MIDI File next to the -o file as "
+                         "'<name>.mid', for reviewing transcription quality in a DAW. Needs the "
+                         "'midi' extra (pip install \"audio2ay3[midi]\")")
 
 
 def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
