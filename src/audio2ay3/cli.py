@@ -140,7 +140,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         breath=getattr(args, "breath", False),
         arpeggio=getattr(args, "arpeggio", False),
         stems_dir=Path(args.stems_dir) if getattr(args, "stems_dir", None) else None,
-        save_stems_format=getattr(args, "save_stems_format", "wav"),
+        save_stems_format=getattr(args, "save_stems_format", "mp3"),
         noise_volume=getattr(args, "noise_volume", 1.0),
         vocals=getattr(args, "vocals", "off"),
     )
@@ -314,9 +314,9 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
                          "No-op without a real --separation model (none / mt3 / yourmt3 / "
                          "--stems-dir)")
     sp.add_argument("--save-stems-format", dest="save_stems_format",
-                    choices=["wav", "mp3"], default="wav",
-                    help="container for --save-stems: 'wav' (lossless, ~10 MB/min per stem; "
-                         "default) or 'mp3' (lossy, ~1/10th the size, encoded at --bitrate)")
+                    choices=["wav", "mp3"], default="mp3",
+                    help="container for --save-stems: 'mp3' (lossy, ~1/10th the size, encoded at "
+                         "--bitrate; default) or 'wav' (lossless, ~10 MB/min per stem)")
     sp.add_argument("--save-midi", action="store_true", dest="save_midi",
                     help="write the pre-arrangement transcription (every detected note, before "
                          "AY channel contention) as a Standard MIDI File next to the -o file as "

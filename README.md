@@ -298,13 +298,13 @@ starting point, but `demucs-ft` is worth the extra time for final-quality render
 
 > **Tip — keep the separator's stems.** Add `--save-stems` to any Demucs run to dump the raw
 > separator output (every source, stereo, native sample rate) next to the `-o` file as
-> `<name> (Vocals).wav`, `<name> (Drums).wav`, `<name> (Bass).wav`, `<name> (Other).wav` (plus
+> `<name> (Vocals).mp3`, `<name> (Drums).mp3`, `<name> (Bass).mp3`, `<name> (Other).mp3` (plus
 > `(Guitar)`/`(Piano)` for `demucs6`). The files round-trip straight back through `--stems-dir`
 > (the `Other` stem is accepted as the melodic stem), so you can separate once and re-render
 > many times without paying for Demucs again. It is a no-op when no separator runs
-> (`--separation none`, the `mt3`/`yourmt3` backends, or `--stems-dir`). Add
-> `--save-stems-format mp3` to write compact MP3s (~1/10th the size, encoded at `--bitrate`)
-> instead of lossless WAV when disk space matters on a big batch.
+> (`--separation none`, the `mt3`/`yourmt3` backends, or `--stems-dir`). Stems are written as
+> compact MP3 by default (~1/10th the size, encoded at `--bitrate`); add
+> `--save-stems-format wav` for lossless WAV when you want the untouched separator output.
 
 > **Tip — review the transcription as MIDI.** Add `--save-midi` to write the **pre-arrangement**
 > transcription (every detected note, *before* the AY's 3-channel contention drops or quantizes

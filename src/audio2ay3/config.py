@@ -163,10 +163,11 @@ class RunConfig:
     # multitrack ``mt3``/``yourmt3`` backends (no separator runs), and when ``stems_dir`` already
     # supplies pre-separated stems. The CLI points this at the ``-o`` output folder.
     save_stems_dir: Path | None = None
-    # Container for the saved stems: ``"wav"`` (lossless, big — ~10 MB/min per stem) or ``"mp3"``
-    # (lossy, ~1/10th the size, encoded at ``mp3_bitrate_kbps``). Both keep the separator's native
-    # sample rate and stereo channels; ignored unless ``save_stems_dir`` is set.
-    save_stems_format: Literal["wav", "mp3"] = "wav"
+    # Container for the saved stems: ``"mp3"`` (lossy, ~1/10th the size, encoded at
+    # ``mp3_bitrate_kbps``; the default) or ``"wav"`` (lossless, big — ~10 MB/min per stem). Both
+    # keep the separator's native sample rate and stereo channels; ignored unless
+    # ``save_stems_dir`` is set.
+    save_stems_format: Literal["wav", "mp3"] = "mp3"
     # Overall volume of the noise channel as a linear voltage ratio (0..1).
     # 1.0 = full amplitude (default), 0.5 = half as loud, 0.0 = muted.
     # Applied uniformly to every amplitude frame written by the percussion renderer, so it
