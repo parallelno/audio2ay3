@@ -59,7 +59,15 @@ _DEMUCS_MODELS = {
 
 
 def separate_stems(
-    audio: np.ndarray, sr: int, mode: str = "demucs", *, keep_vocals: bool = False
+    audio: np.ndarray,
+    sr: int,
+    mode: str = "demucs",
+    *,
+    keep_vocals: bool = False,
+    save_dir: Path | str | None = None,
+    save_name: str | None = None,
+    save_fmt: str = "wav",
+    save_bitrate_kbps: int = 192,
 ) -> SeparationResult:
     """Split *audio* into a pitched instrumental plus isolated bass and drum stems.
 
@@ -77,11 +85,26 @@ def separate_stems(
     When *keep_vocals* is true, the isolated vocal stem is returned in
     :attr:`SeparationResult.vocals` (instead of being discarded) so the caller can transcribe
     the sung melody into a lead voice. It stays ``None`` for ``mode="none"`` (no separation).
+
+    When *save_dir* is given (and a real separator runs), the **raw** separator output — every
+    source, stereo, at the model's native sample rate, before the mono/sum/resample steps — is
+    written to ``<save_dir>/<save_name> (<Source>).<save_fmt>`` for inspection or reuse via
+    ``--stems-dir``. *save_fmt* is ``"wav"`` (lossless) or ``"mp3"`` (encoded at
+    *save_bitrate_kbps*). Ignored for ``mode="none"`` (nothing is separated).
     """
     if mode == "none":
         return SeparationResult(instrumental=audio, drums=None, bass=None, sr=sr)
     if mode in _DEMUCS_MODELS:
-        return _separate_demucs(audio, sr, _DEMUCS_MODELS[mode], keep_vocals=keep_vocals)
+        return _separate_demucs(
+            audio,
+            sr,
+            _DEMUCS_MODELS[mode],
+            keep_vocals=keep_vocals,
+            save_dir=save_dir,
+            save_name=save_name,
+            save_fmt=save_fmt,
+            save_bitrate_kbps=save_bitrate_kbps,
+        )
     if mode == "spleeter":
         raise NotImplementedError(
             "Spleeter backend is not wired yet; use --separation demucs or none."
@@ -94,8 +117,83 @@ def separate(audio: np.ndarray, sr: int, mode: str = "demucs") -> np.ndarray:
     return separate_stems(audio, sr, mode).instrumental
 
 
+def _save_raw_stems(
+    stems_np: "dict[str, np.ndarray]",
+    sr: int,
+    save_dir: Path | str,
+    name: str | None,
+    *,
+    fmt: str = "wav",
+    bitrate_kbps: int = 192,
+) -> None:
+    """Write each raw separator source to ``<save_dir>/<name> (<Source>).<fmt>``.
+
+    *stems_np* maps a separator source name (``"vocals"``, ``"drums"``, ``"bass"``, ``"other"``,
+    and for the 6-stem model ``"guitar"``/``"piano"``) to its ``(samples, channels)`` float32
+    array at *sr*. Source names are capitalised in the filename (``other`` -> ``Other``) so the
+    files round-trip through :func:`load_from_stems_dir`, which now recognises ``Other`` as the
+    melodic stem. *fmt* is ``"wav"`` (lossless, via ``soundfile``) or ``"mp3"`` (lossy, encoded
+    at *bitrate_kbps* via ``lameenc``); both keep the native sample rate and stereo channels.
+    """
+    out_dir = Path(save_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    base = name or "stems"
+    fmt = fmt.lower()
+    if fmt == "mp3":
+        for src, data in stems_np.items():
+            path = out_dir / f"{base} ({src.capitalize()}).mp3"
+            _write_stereo_mp3(str(path), np.asarray(data, dtype=np.float32), sr, bitrate_kbps)
+        return
+    import soundfile as sf
+
+    for src, data in stems_np.items():
+        path = out_dir / f"{base} ({src.capitalize()}).wav"
+        sf.write(str(path), np.asarray(data, dtype=np.float32), sr)
+
+
+def _write_stereo_mp3(
+    path: str, pcm: np.ndarray, sr: int, bitrate_kbps: int = 192
+) -> None:
+    """Encode a ``(samples, channels)`` float32 array to an MP3 at *path* via ``lameenc``.
+
+    Unlike :func:`audio2ay3.render.audio_out.write_mp3` (mono only), this preserves the stem's
+    channel count so saved stems stay stereo.
+    """
+    try:
+        import lameenc
+    except Exception as exc:  # pragma: no cover - depends on optional dep
+        raise RuntimeError(
+            "MP3 stem output requires the 'lameenc' package "
+            '(pip install "audio2ay3[mp3]"). Use --save-stems-format wav instead.'
+        ) from exc
+
+    arr = np.asarray(pcm, dtype=np.float32)
+    if arr.ndim == 1:
+        arr = arr[:, None]
+    channels = arr.shape[1]
+    # C-order bytes of (samples, channels) are already L/R-interleaved int16, which lameenc wants.
+    interleaved = (np.clip(arr, -1.0, 1.0) * 32767.0).astype("<i2").tobytes()
+    enc = lameenc.Encoder()
+    enc.set_bit_rate(int(bitrate_kbps))
+    enc.set_in_sample_rate(int(sr))
+    enc.set_channels(channels)
+    enc.set_quality(2)
+    data = enc.encode(interleaved)
+    data += enc.flush()
+    with open(path, "wb") as fh:
+        fh.write(data)
+
+
 def _separate_demucs(
-    audio: np.ndarray, sr: int, model_name: str = "htdemucs", *, keep_vocals: bool = False
+    audio: np.ndarray,
+    sr: int,
+    model_name: str = "htdemucs",
+    *,
+    keep_vocals: bool = False,
+    save_dir: Path | str | None = None,
+    save_name: str | None = None,
+    save_fmt: str = "wav",
+    save_bitrate_kbps: int = 192,
 ) -> SeparationResult:
     try:
         import torch
@@ -124,6 +222,17 @@ def _separate_demucs(
         stems = apply_model(model, wav, split=True, overlap=0.1)[0]
 
     names = list(model.sources)
+
+    # Persist the raw separator output (all sources, stereo, native sample rate) before any
+    # downmix/sum/resample, so the saved files are exactly what the separator produced.
+    if save_dir is not None:
+        raw = {
+            n: stems[names.index(n)].cpu().numpy().astype(np.float32).T  # (samples, channels)
+            for n in names
+        }
+        _save_raw_stems(
+            raw, model_sr, save_dir, save_name, fmt=save_fmt, bitrate_kbps=save_bitrate_kbps
+        )
 
     def stem_mono(name: str):
         return stems[names.index(name)].mean(dim=0)  # channels -> mono
@@ -172,14 +281,16 @@ def load_from_stems_dir(
     Returns ``None`` when no matching folder is found (caller should fall back to Demucs).
 
     Looks for ``<song_dir>/<name> (<StemType>).<ext>`` (falling back to ``(<StemType>).<ext>``
-    without the name prefix) where *StemType* is one of ``Synth``, ``Bass``, ``Drums``, ``FX``,
-    ``Vocals``.
+    without the name prefix) where *StemType* is one of ``Synth``, ``Other``, ``Bass``,
+    ``Drums``, ``FX``, ``Guitar``, ``Piano``, ``Vocals``.
 
-    * **Synth** → ``instrumental`` (mandatory — raises :exc:`FileNotFoundError` if folder found
-      but the Synth stem file is absent).
+    * **Synth**/**Other** → ``instrumental`` (mandatory — raises :exc:`FileNotFoundError` if the
+      folder is found but neither melodic-stem file is present). ``Other`` is the raw Demucs
+      source name, so stems dumped by ``--save-stems`` load straight back.
     * **Bass**  → ``bass`` (``None`` when file missing).
     * **Drums** → ``drums`` (``None`` when file missing).
-    * **FX**    → mixed into ``instrumental`` when present; ignored otherwise.
+    * **FX**/**Guitar**/**Piano** → mixed into ``instrumental`` when present; ignored otherwise
+      (mirrors the live Demucs path, which folds guitar + piano into the instrumental).
     * **Vocals** → ``vocals`` (only when *keep_vocals*; ``None`` when file missing).
     """
     from .load_audio import load_audio
@@ -213,24 +324,28 @@ def load_from_stems_dir(
         return None
 
     # --- Synth (instrumental melodic content) ---
-    synth_path = _find("Synth")
+    # Accept the raw Demucs source name "Other" as an alias so stems written by --save-stems
+    # round-trip without renaming.
+    synth_path = _find("Synth") or _find("Other")
     if synth_path is None:
         raise FileNotFoundError(
-            f"No Synth stem found in {song_dir}. "
-            f"Expected e.g. '{folder_name} (Synth).mp3'."
+            f"No Synth/Other stem found in {song_dir}. "
+            f"Expected e.g. '{folder_name} (Synth).mp3' or '{folder_name} (Other).wav'."
         )
     instrumental, sr = load_audio(str(synth_path), target_sr)
 
-    # --- FX: mix into instrumental when present (tonal effects add melodic colour) ---
-    fx_path = _find("FX")
-    if fx_path is not None:
-        fx, _ = load_audio(str(fx_path), sr)
-        n = min(instrumental.size, fx.size)
-        blend = instrumental.copy()
-        blend[:n] += fx[:n]
-        if fx.size > instrumental.size:
-            blend = np.concatenate([blend, fx[n:]])
-        instrumental = blend
+    # --- FX / Guitar / Piano: mix into instrumental when present (tonal content adds colour;
+    # mirrors the live Demucs path, which folds guitar + piano into the instrumental). ---
+    for extra_type in ("FX", "Guitar", "Piano"):
+        extra_path = _find(extra_type)
+        if extra_path is not None:
+            extra, _ = load_audio(str(extra_path), sr)
+            n = min(instrumental.size, extra.size)
+            blend = instrumental.copy()
+            blend[:n] += extra[:n]
+            if extra.size > instrumental.size:
+                blend = np.concatenate([blend, extra[n:]])
+            instrumental = blend
 
     # --- Drums ---
     drums: np.ndarray | None = None

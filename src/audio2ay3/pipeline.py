@@ -237,11 +237,29 @@ def _build_transcription(path: str, cfg: RunConfig, progress: Progress, *, song_
             )
             if cfg.separation != "none":
                 progress.step("separating stems")
-            stems = separate_stems(audio, sr, cfg.separation, keep_vocals=keep_vocals)
+            stems = separate_stems(
+                audio,
+                sr,
+                cfg.separation,
+                keep_vocals=keep_vocals,
+                save_dir=cfg.save_stems_dir,
+                save_name=lookup_name,
+                save_fmt=cfg.save_stems_format,
+                save_bitrate_kbps=cfg.mp3_bitrate_kbps,
+            )
     else:
         if cfg.separation != "none":
             progress.step("separating stems")
-        stems = separate_stems(audio, sr, cfg.separation, keep_vocals=keep_vocals)
+        stems = separate_stems(
+            audio,
+            sr,
+            cfg.separation,
+            keep_vocals=keep_vocals,
+            save_dir=cfg.save_stems_dir,
+            save_name=lookup_name,
+            save_fmt=cfg.save_stems_format,
+            save_bitrate_kbps=cfg.mp3_bitrate_kbps,
+        )
     progress.step("transcribing")
     tr = transcribe(stems.instrumental, stems.sr, cfg.transcription, cfg.chip.frame_rate_hz)
     # Follow each note's real loudness shape from its own stem so held notes sustain and plucks

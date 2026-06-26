@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 from .config import ChipConfig, RunConfig
@@ -120,6 +121,7 @@ def _build_run_config(args: argparse.Namespace) -> RunConfig:
         breath=getattr(args, "breath", False),
         arpeggio=getattr(args, "arpeggio", False),
         stems_dir=Path(args.stems_dir) if getattr(args, "stems_dir", None) else None,
+        save_stems_format=getattr(args, "save_stems_format", "wav"),
         noise_volume=getattr(args, "noise_volume", 1.0),
         vocals=getattr(args, "vocals", "off"),
     )
@@ -174,6 +176,8 @@ def cmd_convert(args: argparse.Namespace) -> int:
         return 3
     out = args.output or _default_out(args.input, default_ext)
     Path(out).parent.mkdir(parents=True, exist_ok=True)
+    if getattr(args, "save_stems", False):
+        cfg = replace(cfg, save_stems_dir=Path(out).parent)
 
     explain = getattr(args, "explain", False)
     trace: list | None = [] if explain else None
@@ -211,6 +215,8 @@ def cmd_preview(args: argparse.Namespace) -> int:
         return 3
     ext = ".wav" if args.wav else ".mp3"
     out = args.output or _default_out(args.input, ext)
+    if getattr(args, "save_stems", False):
+        cfg = replace(cfg, save_stems_dir=Path(out).parent)
 
     explain = getattr(args, "explain", False)
     trace: list | None = [] if explain else None
@@ -281,6 +287,15 @@ def _add_analysis_args(sp: argparse.ArgumentParser) -> None:
                     help="directory of pre-separated stems; when given, Demucs is skipped and "
                          "stems are loaded from <stems-dir>/<song>/<song> (Synth|Bass|Drums).mp3 "
                          "directly (--separation is ignored)")
+    sp.add_argument("--save-stems", action="store_true", dest="save_stems",
+                    help="write the raw separator output (every source, stereo, native sample "
+                         "rate) next to the -o file as '<name> (Vocals|Drums|Bass|Other).<ext>'. "
+                         "No-op without a real --separation model (none / mt3 / yourmt3 / "
+                         "--stems-dir)")
+    sp.add_argument("--save-stems-format", dest="save_stems_format",
+                    choices=["wav", "mp3"], default="wav",
+                    help="container for --save-stems: 'wav' (lossless, ~10 MB/min per stem; "
+                         "default) or 'mp3' (lossy, ~1/10th the size, encoded at --bitrate)")
 
 
 def _add_arrangement_args(sp: argparse.ArgumentParser) -> None:
