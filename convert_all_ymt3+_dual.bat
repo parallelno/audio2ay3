@@ -2,7 +2,7 @@
 setlocal
 
 REM Dual-AY YourMT3 (YMT3+) batch conversion for every long sample.
-REM Produces, per song, in results\ymt3plus_dual\ :
+REM Produces, per song, in results\ymt3+_dual\ :
 REM   <name>.ym  + <name>.ay2.ym   (chip 0 / chip 1)   and   <name>.mp3 (mixed preview)
 REM ONE YourMT3 inference per song (the Python driver writes the .ym files and renders the
 REM mixed .mp3 from the same in-memory dual-chip song -- it does NOT run inference twice).
@@ -12,9 +12,9 @@ REM (clones the GPL YourMT3 backend into the per-user cache; ships the YMT3+ che
 
 set PY=%~dp0.venv\Scripts\python.exe
 
-"%PY%" scripts\convert_long_dual.py --transcription yourmt3 --model "YMT3+" --separation none --out-dir results\ymt3plus_dual %*
+"%PY%" scripts\convert_long_dual.py --transcription yourmt3 --model "YMT3+" --separation none --out-dir results\ymt3+_dual %*
 if errorlevel 1 ( echo. & echo One or more songs failed -- see the log above. & exit /b 1 )
 
 echo.
-echo All done -> results\ymt3plus_dual\
+echo All done -> results\ymt3+_dual\
 endlocal
